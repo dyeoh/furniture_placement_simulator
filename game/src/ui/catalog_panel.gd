@@ -186,12 +186,14 @@ func build(p_catalog: Catalog, on_web: bool) -> void:
 		var b := Button.new()
 		b.custom_minimum_size = Vector2(34, 34)
 		b.tooltip_text = sw[0]
-		b.add_theme_font_size_override("font_size", 18)
 		var col := Color(sw[1])
 		b.add_theme_stylebox_override("normal", _swatch_style(col, false))
 		b.add_theme_stylebox_override("hover", _swatch_style(col, false))
 		b.add_theme_stylebox_override("pressed", _swatch_style(col, false))
 		b.pressed.connect(func(): swatch_chosen.emit(col))
+		var tick := Tick.new()
+		tick.name = "Tick"
+		b.add_child(tick)
 		grid.add_child(b)
 		_swatches[col.to_html(false)] = b
 	_paint_label = Label.new()
@@ -356,8 +358,10 @@ func set_paint_color(color: Color) -> void:
 		var b: Button = _swatches[k]
 		var on: bool = (str(k) == key)
 		var col := Color("#" + str(k))
-		b.text = "✓" if on else ""
-		b.add_theme_color_override("font_color", Color.WHITE if col.get_luminance() < 0.5 else Color(0.15, 0.15, 0.15))
+		var tick: Tick = b.get_node("Tick")
+		tick.visible = on
+		tick.color = Color.WHITE if col.get_luminance() < 0.5 else Color(0.15, 0.15, 0.15)
+		tick.queue_redraw()
 		for state in ["normal", "hover", "pressed"]:
 			b.add_theme_stylebox_override(state, _swatch_style(col, on))
 		if on:
@@ -433,3 +437,21 @@ func show_selected(p: PlacedItem) -> void:
 	_finish_opt.visible = idx > 0
 	if idx > 0:
 		_finish_opt.select(sel)
+
+
+## A drawn tick for the selected swatch. Drawn rather than typed: the web
+## build's font has no U+2713, and a tofu box is not a tick.
+class Tick extends Control:
+	var color := Color.WHITE
+
+	func _init() -> void:
+		# _init, not _ready: the panel is built (and the first swatch marked)
+		# before it enters the tree, and _ready would hide it again.
+		set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		visible = false
+
+	func _draw() -> void:
+		var c := size * 0.5
+		var pts := PackedVector2Array([c + Vector2(-7, 0), c + Vector2(-2, 5), c + Vector2(7, -5)])
+		draw_polyline(pts, color, 2.5, true)
