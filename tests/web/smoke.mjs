@@ -17,6 +17,16 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const READY_TIMEOUT_MS = 180_000; // wasm compile on a shared runner is slow
+
+// Console errors that a headless engine's software GL emits while the sim
+// nevertheless runs correctly. Kept narrow on purpose: anything else logged
+// at console.error still fails the build.
+const BENIGN = [
+  // WebKit on Linux (Mesa) validates a Godot Compatibility-renderer blit
+  // that real Safari accepts; the frame still renders.
+  /^WebGL: INVALID_OPERATION: glBlitFramebuffer: Read and write color attachments cannot be the same image\.$/,
+];
+const isBenign = (text) => BENIGN.some((re) => re.test(text));
 const MIME = {
   '.html': 'text/html', '.js': 'text/javascript', '.wasm': 'application/wasm',
   '.pck': 'application/octet-stream', '.png': 'image/png', '.json': 'application/json',
@@ -54,7 +64,7 @@ async function run(base, c) {
   const log = [];   // everything, for the post-mortem when a case fails
   page.on('console', (msg) => {
     log.push(`${msg.type()}: ${msg.text()}`);
-    if (msg.type() === 'error') errors.push(msg.text());
+    if (msg.type() === 'error' && !isBenign(msg.text())) errors.push(msg.text());
   });
   page.on('pageerror', (err) => { log.push(`pageerror: ${err.message}`); errors.push(`pageerror: ${err.message}`); });
   page.on('requestfailed', (req) => log.push(`requestfailed: ${req.url()} ${req.failure()?.errorText || ''}`));
