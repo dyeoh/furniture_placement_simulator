@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0">
+		<title>$GODOT_PROJECT_NAME</title>
+		<style>
+/* Custom export shell (export_presets.cfg: html/custom_html_shell). Godot
+   fills in the $GODOT_* placeholders. The loader is styled to match the
+   showroom's warm off-white so the hand-over to the first frame is
+   seamless; project.godot's boot splash uses the same colour. */
+html, body, #canvas {
+	margin: 0;
+	padding: 0;
+	border: 0;
+}
+
+body {
+	color: #3a3733;
+	background-color: #f0eee9;
+	overflow: hidden;
+	touch-action: none;
+	font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Roboto, Helvetica, Arial, sans-serif;
+}
+
+#canvas {
+	display: block;
+}
+
+#canvas:focus {
+	outline: none;
+}
+
+#status {
+	position: absolute;
+	inset: 0;
+	background-color: #f0eee9;
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	align-items: center;
+	gap: 1.1rem;
+	visibility: hidden;
+	transition: opacity 0.45s ease;
+}
+
+#status.fading {
+	opacity: 0;
+}
+
+#status-mark {
+	width: 72px;
+	height: 72px;
+}
+
+#status-title {
+	font-size: 1.35rem;
+	font-weight: 600;
+	letter-spacing: 0.02em;
+	margin: 0;
+}
+
+#status-sub {
+	font-size: 0.9rem;
+	opacity: 0.65;
+	margin: -0.6rem 0 0;
+	text-align: center;
+	padding: 0 1.5rem;
+}
+
+#status-bar {
+	width: min(280px, 70vw);
+	height: 4px;
+	border-radius: 2px;
+	background: rgba(58, 55, 51, 0.15);
+	overflow: hidden;
+}
+
+#status-fill {
+	height: 100%;
+	width: 0%;
+	border-radius: 2px;
+	background: #7f9a7a;
+	transition: width 0.2s ease;
+}
+
+#status-fill.indeterminate {
+	width: 35%;
+	animation: slide 1.1s ease-in-out infinite alternate;
+}
+
+@keyframes slide {
+	from { transform: translateX(-100%); }
+	to { transform: translateX(285%); }
+}
+
+#status-detail {
+	font-size: 0.8rem;
+	opacity: 0.55;
+	min-height: 1.2em;
+	margin: -0.5rem 0 0;
+}
+
+#status-notice {
+	display: none;
+	background-color: #f4dedb;
+	border-radius: 0.5rem;
+	border: 1px solid #b3624a;
+	color: #5b2e22;
+	line-height: 1.3;
+	margin: 0 2rem;
+	max-width: 32rem;
+	overflow: hidden;
+	padding: 1rem;
+	text-align: center;
+}
+		</style>
+		$GODOT_HEAD_INCLUDE
+	</head>
+	<body>
+		<canvas id="canvas">
+			Your browser does not support the canvas tag.
+		</canvas>
+
+		<noscript>
+			Your browser does not support JavaScript.
+		</noscript>
+
+		<div id="status">
+			<svg id="status-mark" viewBox="0 0 72 72" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+				<!-- a room corner: sage wall, linen wall, laminate floor, one piece placed -->
+				<path d="M8 44 L36 58 L64 44 L36 30 Z" fill="#c9b99c"/>
+				<path d="M8 44 L8 16 L36 2 L36 30 Z" fill="#b7c4a8"/>
+				<path d="M36 30 L36 2 L64 16 L64 44 Z" fill="#e3d9c6"/>
+				<path d="M8 44 L8 41 L36 27 L36 30 Z" fill="#f6f1e7"/>
+				<path d="M36 30 L36 27 L64 41 L64 44 Z" fill="#f6f1e7"/>
+				<path d="M40 40 L40 30 L54 37 L54 47 Z" fill="#6b4a2f"/>
+				<path d="M28 46 L28 36 L40 30 L40 40 Z" fill="#a0714a"/>
+				<path d="M28 36 L40 30 L54 37 L42 43 Z" fill="#d2b48c"/>
+			</svg>
+			<p id="status-title">Room Planner</p>
+			<p id="status-sub">Drop in furniture, paint the walls, walk through it.</p>
+			<div id="status-bar"><div id="status-fill"></div></div>
+			<p id="status-detail">Loading…</p>
+			<div id="status-notice"></div>
+		</div>
+
+		<script src="$GODOT_URL"></script>
+		<script>
+const GODOT_CONFIG = $GODOT_CONFIG;
+const GODOT_THREADS_ENABLED = $GODOT_THREADS_ENABLED;
+const engine = new Engine(GODOT_CONFIG);
+
+(function () {
+	const statusOverlay = document.getElementById('status');
+	const statusFill = document.getElementById('status-fill');
+	const statusDetail = document.getElementById('status-detail');
+	const statusNotice = document.getElementById('status-notice');
+
+	let initializing = true;
+	let statusMode = '';
+
+	function setStatusMode(mode) {
+		if (statusMode === mode || !initializing) {
+			return;
+		}
+		if (mode === 'hidden') {
+			// Fade over the first frame rather than cut.
+			statusOverlay.classList.add('fading');
+			setTimeout(() => statusOverlay.remove(), 500);
+			initializing = false;
+			return;
+		}
+		statusOverlay.style.visibility = 'visible';
+		statusNotice.style.display = mode === 'notice' ? 'block' : 'none';
+		statusMode = mode;
+	}
+
+	function setStatusNotice(text) {
+		while (statusNotice.lastChild) {
+			statusNotice.removeChild(statusNotice.lastChild);
+		}
+		const lines = text.split('\n');
+		lines.forEach((line) => {
+			statusNotice.appendChild(document.createTextNode(line));
+			statusNotice.appendChild(document.createElement('br'));
+		});
+	}
+
+	function displayFailureNotice(err) {
+		console.error(err);
+		if (err instanceof Error) {
+			setStatusNotice(err.message);
+		} else if (typeof err === 'string') {
+			setStatusNotice(err);
+		} else {
+			setStatusNotice('An unknown error occurred.');
+		}
+		statusDetail.textContent = '';
+		setStatusMode('notice');
+		initializing = false;
+	}
+
+	function mb(bytes) {
+		return (bytes / 1048576).toFixed(1);
+	}
+
+	const missing = Engine.getMissingFeatures({
+		threads: GODOT_THREADS_ENABLED,
+	});
+
+	if (missing.length !== 0) {
+		if (GODOT_CONFIG['serviceWorker'] && GODOT_CONFIG['ensureCrossOriginIsolationHeaders'] && 'serviceWorker' in navigator) {
+			let serviceWorkerRegistrationPromise;
+			try {
+				serviceWorkerRegistrationPromise = navigator.serviceWorker.getRegistration();
+			} catch (err) {
+				serviceWorkerRegistrationPromise = Promise.reject(new Error('Service worker registration failed.'));
+			}
+			// There's a chance that installing the service worker would fix the issue
+			Promise.race([
+				serviceWorkerRegistrationPromise.then((registration) => {
+					if (registration != null) {
+						return Promise.reject(new Error('Service worker already exists.'));
+					}
+					return registration;
+				}).then(() => engine.installServiceWorker()),
+				// For some reason, `getRegistration()` can stall
+				new Promise((resolve) => {
+					setTimeout(() => resolve(), 2000);
+				}),
+			]).then(() => {
+				// Reload if there was no error.
+				window.location.reload();
+			}).catch((err) => {
+				console.error('Error while registering service worker:', err);
+			});
+		} else {
+			// Display the message as usual
+			const missingMsg = 'This browser is missing features the room planner needs:\n';
+			displayFailureNotice(missingMsg + missing.join('\n'));
+		}
+	} else {
+		setStatusMode('progress');
+		statusFill.classList.add('indeterminate');
+		engine.startGame({
+			'onProgress': function (current, total) {
+				if (current > 0 && total > 0) {
+					statusFill.classList.remove('indeterminate');
+					statusFill.style.width = Math.min(100, 100 * current / total).toFixed(1) + '%';
+					if (current >= total) {
+						// Downloaded; the engine is now compiling and booting,
+						// which reports nothing, so say so instead of sitting at 100%.
+						statusDetail.textContent = 'Building the room…';
+						statusFill.style.width = '';
+						statusFill.classList.add('indeterminate');
+					} else {
+						statusDetail.textContent = mb(current) + ' / ' + mb(total) + ' MB';
+					}
+				} else {
+					statusFill.style.width = '';
+					statusFill.classList.add('indeterminate');
+					statusDetail.textContent = 'Loading…';
+				}
+			},
+		}).then(() => {
+			setStatusMode('hidden');
+		}, displayFailureNotice);
+	}
+}());
+		</script>
+	</body>
+</html>

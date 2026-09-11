@@ -14,6 +14,8 @@ config/name="Furniture Placement Simulator"
 config/description="Web-embeddable room planner on Box3D: drop furniture, watch it settle, paint the walls, walk through."
 run/main_scene="res://scenes/showroom.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
+boot_splash/bg_color=Color(0.941176, 0.933333, 0.913725, 1)
+boot_splash/show_image=false
 
 [display]
 
