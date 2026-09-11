@@ -76,9 +76,18 @@ func run() -> void:
 	await drag(1, right, right + Vector2(40, -10))
 	check("look pad drag", _looked.is_equal_approx(Vector2(40, -10)), str(_looked))
 	check("stick unaffected by look finger", tc.stick_vector().is_equal_approx(Vector2(1, 0)))
-	await touch(1, false, right + Vector2(40, -10))
+	# A drag whose `relative` is nonsense (what the web build sends with two
+	# fingers down) must still turn by the finger's actual movement.
+	var bogus := InputEventScreenDrag.new()
+	bogus.index = 1
+	bogus.position = right + Vector2(50, -10)
+	bogus.relative = Vector2(640, 380)
+	Input.parse_input_event(bogus)
+	await process_frame
+	check("look ignores the event's relative", _looked.is_equal_approx(Vector2(50, -10)), str(_looked))
+	await touch(1, false, right + Vector2(50, -10))
 	await drag(1, right, right + Vector2(40, 0))
-	check("released finger no longer looks", _looked.is_equal_approx(Vector2(40, -10)), str(_looked))
+	check("released finger no longer looks", _looked.is_equal_approx(Vector2(50, -10)), str(_looked))
 
 	# --- a third finger on the stick zone does not steal the stick
 	await touch(2, true, left + Vector2(60, 0))
@@ -104,7 +113,7 @@ func run() -> void:
 	Input.parse_input_event(em)
 	await process_frame
 	check("emulated mouse swallowed", _leaked == 0, "%d leaked" % _leaked)
-	check("emulated mouse does not double-drive the look", _looked.is_equal_approx(Vector2(40, -10)), str(_looked))
+	check("emulated mouse does not double-drive the look", _looked.is_equal_approx(Vector2(50, -10)), str(_looked))
 	var emu := InputEventMouseButton.new()
 	emu.device = InputEvent.DEVICE_ID_EMULATION
 	emu.button_index = MOUSE_BUTTON_LEFT

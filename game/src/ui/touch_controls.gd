@@ -155,16 +155,23 @@ class Stick extends TouchPad:
 class LookPad extends TouchPad:
 	signal dragged(relative: Vector2)
 	var _index := -1
+	var _last := Vector2.ZERO
 
-	func _finger(index: int, pressed: bool, _at: Vector2) -> void:
+	func _finger(index: int, pressed: bool, at: Vector2) -> void:
 		if pressed and _index == -1:
 			_index = index
+			_last = at
 		elif not pressed and index == _index:
 			_index = -1
 
-	func _moved(index: int, _at: Vector2, relative: Vector2) -> void:
-		if index == _index:
-			dragged.emit(relative)
+	## The delta is taken from this pad's own last position, never from the
+	## event's `relative`: with two fingers down the web build computes that
+	## against the other finger now and then, which jerks the camera.
+	func _moved(index: int, at: Vector2, _relative: Vector2) -> void:
+		if index != _index:
+			return
+		dragged.emit(at - _last)
+		_last = at
 
 	func _draw() -> void:
 		var font := ThemeDB.fallback_font
