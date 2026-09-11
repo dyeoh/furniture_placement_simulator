@@ -51,12 +51,19 @@ async function run(base, c) {
   const context = await browser.newContext(c.device || {});
   const page = await context.newPage();
   const errors = [];
-  page.on('console', (msg) => { if (msg.type() === 'error') errors.push(msg.text()); });
-  page.on('pageerror', (err) => errors.push(`pageerror: ${err.message}`));
+  const log = [];   // everything, for the post-mortem when a case fails
+  page.on('console', (msg) => {
+    log.push(`${msg.type()}: ${msg.text()}`);
+    if (msg.type() === 'error') errors.push(msg.text());
+  });
+  page.on('pageerror', (err) => { log.push(`pageerror: ${err.message}`); errors.push(`pageerror: ${err.message}`); });
+  page.on('requestfailed', (req) => log.push(`requestfailed: ${req.url()} ${req.failure()?.errorText || ''}`));
   // coi-serviceworker reloads the page once it has registered, aborting the
   // first load's fetches (WebKit reports that as "Load failed"). Only the
   // load that actually boots the sim is judged.
-  page.on('framenavigated', (frame) => { if (frame === page.mainFrame()) errors.length = 0; });
+  page.on('framenavigated', (frame) => {
+    if (frame === page.mainFrame()) { errors.length = 0; log.push(`--- navigated: ${frame.url()}`); }
+  });
   // The sim posts to window.parent; at top level that is the page itself.
   await page.addInitScript(() => {
     window.__sim = { ready: false, quality: null };
@@ -100,8 +107,22 @@ async function run(base, c) {
         : { ok: true, quality: state.quality };
     }
   } catch (err) {
-    outcome = { failed: true, reason: `${err.message}${errors.length ? '\n    ' + errors.join('\n    ') : ''}` };
+    outcome = { failed: true, reason: err.message.split('\n')[0] };
   } finally {
+    if (outcome.failed) {
+      try {
+        const env = await page.evaluate(() => {
+          let gl = 'n/a';
+          try {
+            const c = document.createElement('canvas').getContext('webgl2');
+            const d = c && c.getExtension('WEBGL_debug_renderer_info');
+            gl = c ? (d ? c.getParameter(d.UNMASKED_RENDERER_WEBGL) : 'webgl2 ok') : 'no webgl2';
+          } catch (e) { gl = `error: ${e.message}`; }
+          return { ua: navigator.userAgent, gl, detail: (document.getElementById('status-detail') || {}).textContent };
+        });
+        outcome.diagnostics = [`ua: ${env.ua}`, `webgl2: ${env.gl}`, `loader: ${env.detail}`, ...log];
+      } catch (e) { outcome.diagnostics = log; }
+    }
     await browser.close();
   }
   outcome.seconds = ((Date.now() - started) / 1000).toFixed(1);
@@ -119,6 +140,7 @@ for (const c of CASES) {
   const tag = r.ok ? 'OK  ' : r.skipped ? 'SKIP' : 'FAIL';
   console.log(`[${tag}] ${c.name} (${r.seconds}s)${r.ok ? `  quality=${r.quality}` : ''}`);
   if (r.reason) console.log(`    ${r.reason}`);
+  if (r.diagnostics) for (const line of r.diagnostics) console.log(`      ${line}`);
   if (r.failed) failed++;
 }
 if (local) local.close();
