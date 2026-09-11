@@ -1,0 +1,148 @@
+{% comment %}
+  Room Planner — Shopify theme section.
+
+  Embeds the Furniture Placement Simulator (a Godot web build hosted on GitHub
+  Pages) in an <iframe> and wires it to the store:
+
+    store  -> sim   the products of a collection, as a catalogue (dimensions
+                    parsed from each product description, "W x D x H" in mm)
+    sim    -> store "add_to_cart" with variant ids, forwarded to /cart/add.js;
+                    "layout" on every change (kept in sessionStorage so a
+                    reload restores the room)
+
+  Install: Online Store > Themes > Edit code > Sections > Add a new section,
+  name it room-planner, paste this file. Then add the "Room planner" section
+  to a page (e.g. the Design Lab collection page) and set the Simulator URL.
+
+  Messages are JSON strings; origins are checked both ways.
+{% endcomment %}
+
+{%- assign coll = collections[section.settings.collection] -%}
+{%- assign sim_url = section.settings.sim_url | default: 'https://dyeoh.github.io/furniture_placement_simulator/' -%}
+
+<div class="room-planner" id="room-planner-{{ section.id }}" style="padding: 0 1rem;">
+  {%- if section.settings.heading != blank -%}
+    <h2 class="room-planner__heading">{{ section.settings.heading | escape }}</h2>
+  {%- endif -%}
+  <div class="room-planner__frame" style="position: relative; width: 100%; aspect-ratio: 16 / 10; min-height: 420px; background: #f0eee9; border-radius: 8px; overflow: hidden;">
+    <iframe
+      id="room-planner-frame-{{ section.id }}"
+      src="{{ sim_url }}?host={{ shop.secure_url | url_encode }}"
+      title="Room planner"
+      allow="pointer-lock; fullscreen"
+      loading="lazy"
+      style="position: absolute; inset: 0; width: 100%; height: 100%; border: 0;"
+    ></iframe>
+  </div>
+  <p class="room-planner__note" style="font-size: 0.85em; opacity: 0.7; margin-top: 0.5rem;">
+    Drop pieces from the catalogue into the room, paint the walls, then walk
+    through it. Items marked (est.) use approximate dimensions.
+  </p>
+</div>
+
+<script>
+  (function () {
+    var frame = document.getElementById('room-planner-frame-{{ section.id }}');
+    if (!frame) { return; }
+    var simOrigin = new URL(frame.getAttribute('src'), location.href).origin;
+    var storageKey = 'room-planner-layout-{{ section.id }}';
+
+    // The collection as a catalogue. Dimensions are read from the product
+    // description ("1350 x 300 x 2100" = W x D x H in mm); products with none
+    // get a generic box and are flagged estimated.
+    var catalog = {
+      type: 'catalog',
+      finishes: {
+        eucalyptus:         { name: 'Eucalyptus',         color: '#b58a5a' },
+        feature_eucalyptus: { name: 'Feature Eucalyptus', color: '#a0714a' },
+        american_oak:       { name: 'American Oak',       color: '#d2b48c' },
+        japanese_black:     { name: 'Japanese Black',     color: '#2b2b2e' },
+        blackwood:          { name: 'Blackwood',          color: '#6b4a2f' }
+      },
+      items: [
+        {%- for product in coll.products -%}
+        {
+          id: {{ product.handle | json }},
+          name: {{ product.title | json }},
+          variant_id: {{ product.selected_or_first_available_variant.id | default: 0 }},
+          price: {{ product.price | default: 0 }},
+          image: {{ product.featured_image | image_url: width: 300 | json }},
+          description: {{ product.description | strip_html | strip_newlines | truncate: 400 | json }},
+          finish: 'american_oak',
+          wall_snap: true
+        }{% unless forloop.last %},{% endunless %}
+        {%- endfor -%}
+      ]
+    };
+    var dims = /(\d{3,4})\s*[x×]\s*(\d{3,4})\s*[x×]\s*(\d{3,4})/i;
+    var finishes = Object.keys(catalog.finishes);
+    catalog.items.forEach(function (it, i) {
+      var m = dims.exec(it.description || '');
+      if (m) {
+        it.size_mm = [parseInt(m[1], 10), parseInt(m[2], 10), parseInt(m[3], 10)];
+      } else {
+        it.size_mm = [900, 450, 800];
+        it.estimated = true;
+      }
+      // Rough mass from volume so shoving feels right; the store has no weights.
+      var v = it.size_mm[0] * it.size_mm[1] * it.size_mm[2] / 1e9;
+      it.mass = Math.max(5, Math.min(120, Math.round(v * 140)));
+      // Tables do not belong against walls.
+      it.wall_snap = !/table/i.test(it.name) || /bedside|side table/i.test(it.name);
+      it.finish = finishes[i % finishes.length];
+      delete it.description;
+    });
+
+    function send(msg) {
+      if (frame.contentWindow) { frame.contentWindow.postMessage(JSON.stringify(msg), simOrigin); }
+    }
+
+    window.addEventListener('message', function (ev) {
+      if (ev.origin !== simOrigin || typeof ev.data !== 'string') { return; }
+      var msg;
+      try { msg = JSON.parse(ev.data); } catch (e) { return; }
+      if (!msg || !msg.type) { return; }
+
+      if (msg.type === 'ready') {
+        if (catalog.items.length) { send(catalog); }
+        try {
+          var saved = sessionStorage.getItem(storageKey);
+          if (saved) { send(JSON.parse(saved)); }
+        } catch (e) {}
+        return;
+      }
+
+      if (msg.type === 'layout') {
+        try { sessionStorage.setItem(storageKey, JSON.stringify(msg)); } catch (e) {}
+        return;
+      }
+
+      if (msg.type === 'add_to_cart' && Array.isArray(msg.items)) {
+        var items = msg.items
+          .filter(function (i) { return i.variant_id > 0 && i.quantity > 0; })
+          .map(function (i) { return { id: i.variant_id, quantity: i.quantity }; });
+        if (!items.length) { return; }
+        fetch('/cart/add.js', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+          body: JSON.stringify({ items: items })
+        }).then(function (r) {
+          if (r.ok) { window.location.href = '/cart'; }
+          else { r.json().then(function (j) { alert(j.description || 'Could not add to cart'); }); }
+        });
+      }
+    });
+  })();
+</script>
+
+{% schema %}
+{
+  "name": "Room planner",
+  "settings": [
+    { "type": "text", "id": "heading", "label": "Heading", "default": "Plan your room" },
+    { "type": "url", "id": "sim_url", "label": "Simulator URL", "info": "The GitHub Pages URL of the web build. Leave empty for the default." },
+    { "type": "collection", "id": "collection", "label": "Collection to load as the catalogue" }
+  ],
+  "presets": [ { "name": "Room planner" } ]
+}
+{% endschema %}

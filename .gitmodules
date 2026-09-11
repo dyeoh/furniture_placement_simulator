@@ -1,0 +1,3 @@
+[submodule "engine/box3d-godot"]
+	path = engine/box3d-godot
+	url = git@github.com:dyeoh/box3d-godot.git
