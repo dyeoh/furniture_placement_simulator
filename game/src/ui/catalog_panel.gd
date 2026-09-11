@@ -29,6 +29,8 @@ enum Tool { PLACE, PAINT, WALK, LIGHT }
 const TOOL_NAMES := ["Place", "Paint", "Walk", "Light"]
 
 const BTN_MIN := Vector2(0, 40)
+## Breathing room between the panel edge and its contents.
+const PADDING := 12
 
 var catalog: Catalog
 
@@ -58,9 +60,13 @@ func build(p_catalog: Catalog, on_web: bool) -> void:
 	for c in get_children():
 		c.queue_free()
 
+	var margin := MarginContainer.new()
+	for side in ["left", "top", "right", "bottom"]:
+		margin.add_theme_constant_override("margin_" + side, PADDING)
+	add_child(margin)
 	var root := VBoxContainer.new()
 	root.add_theme_constant_override("separation", 8)
-	add_child(root)
+	margin.add_child(root)
 
 	var title := Label.new()
 	title.text = "Room Planner"

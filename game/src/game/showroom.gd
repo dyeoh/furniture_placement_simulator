@@ -121,15 +121,19 @@ func _build_ui() -> void:
 
 	var hud_panel := PanelContainer.new()
 	hud_panel.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	hud_panel.offset_left = -330
+	hud_panel.offset_left = -370
 	hud_panel.offset_right = -8
 	hud_panel.offset_top = 8
 	hud_panel.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	layer.add_child(hud_panel)
+	var hud_margin := MarginContainer.new()
+	for side in ["left", "top", "right", "bottom"]:
+		hud_margin.add_theme_constant_override("margin_" + side, CatalogPanel.PADDING)
+	hud_panel.add_child(hud_margin)
 	_hud = Label.new()
 	_hud.add_theme_font_size_override("font_size", 13)
 	_hud.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	hud_panel.add_child(_hud)
+	hud_margin.add_child(_hud)
 
 	if TouchControls.wanted():
 		_touch = TouchControls.new()
