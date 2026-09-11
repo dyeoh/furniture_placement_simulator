@@ -8,16 +8,27 @@
     "blackwood":          {"name": "Blackwood",          "color": "#6b4a2f"}
   },
   "items": [
-    {"id": "segu-shelf",            "name": "Segu Shelf",            "size_mm": [1350, 300, 2100], "mass": 55, "wall_snap": true,  "variant_id": 47737160794353, "finish": "american_oak"},
-    {"id": "gu-shelf",              "name": "Gu Shelf",              "size_mm": [1400, 230, 430],  "mass": 18, "wall_snap": true,  "variant_id": 47736625496305, "finish": "eucalyptus"},
-    {"id": "lutra-bedside-table",   "name": "Lutra Bedside Table",   "size_mm": [550, 420, 550],   "mass": 14, "wall_snap": true,  "variant_id": 48343140630769, "finish": "blackwood"},
-    {"id": "lutra-shoe-cabinet",    "name": "Lutra Shoe Cabinet",    "size_mm": [900, 350, 1150],  "mass": 32, "wall_snap": true,  "variant_id": 47821952549105, "finish": "feature_eucalyptus"},
-    {"id": "hikari-drinks-cabinet", "name": "Hikari Drinks Cabinet", "size_mm": [1100, 470, 1800], "mass": 60, "wall_snap": true,  "variant_id": 48340398211313, "finish": "japanese_black"},
-    {"id": "naka-bed",              "name": "Naka Bed (Queen)",      "size_mm": [1700, 2200, 450], "mass": 70, "wall_snap": true,  "variant_id": 47782574358769, "finish": "american_oak", "estimated": true},
-    {"id": "logos-tv-unit",         "name": "Logos TV Unit",         "size_mm": [1800, 450, 500],  "mass": 40, "wall_snap": true,  "variant_id": 48061572808945, "finish": "blackwood", "estimated": true},
-    {"id": "logos-buffet",          "name": "Logos Buffet",          "size_mm": [1600, 450, 850],  "mass": 55, "wall_snap": true,  "variant_id": 48061605511409, "finish": "eucalyptus", "estimated": true},
-    {"id": "se-side-table",         "name": "Se Side Table",         "size_mm": [450, 450, 500],   "mass": 8,  "wall_snap": false, "variant_id": 48060316385521, "finish": "japanese_black", "estimated": true},
-    {"id": "moto-coffee-table",     "name": "Moto Coffee Table",     "size_mm": [1100, 600, 380],  "mass": 22, "wall_snap": false, "variant_id": 0, "finish": "american_oak", "estimated": true},
-    {"id": "taka-dining-table",     "name": "Taka Dining Table",     "size_mm": [1800, 900, 740],  "mass": 45, "wall_snap": false, "variant_id": 0, "finish": "feature_eucalyptus", "estimated": true}
+    {"id": "segu-shelf",            "name": "Segu Shelf",            "size_mm": [1350, 300, 2100], "mass": 55, "wall_snap": true,  "variant_id": 47737160794353, "finish": "american_oak", "model": "wooden_display_shelves_01",
+     "variants": {"eucalyptus": 47737160794353, "feature_eucalyptus": 47737160827121, "american_oak": 47737160859889, "japanese_black": 47737160892657, "blackwood": 47737160925425}},
+    {"id": "gu-shelf",              "name": "Gu Shelf",              "size_mm": [1400, 230, 430],  "mass": 18, "wall_snap": true,  "variant_id": 47736625496305, "finish": "eucalyptus", "model": "wooden_display_shelves_01",
+     "variants": {"eucalyptus": 47736625496305, "feature_eucalyptus": 47736625529073, "american_oak": 47736625561841, "japanese_black": 47736625594609, "blackwood": 47736625627377}},
+    {"id": "lutra-bedside-table",   "name": "Lutra Bedside Table",   "size_mm": [550, 420, 550],   "mass": 14, "wall_snap": true,  "variant_id": 48343140630769, "finish": "blackwood", "model": "side_table_01",
+     "variants": {"eucalyptus": 48343140630769, "feature_eucalyptus": 48343140663537, "american_oak": 48343140696305, "japanese_black": 48343140729073, "blackwood": 48343140761841}},
+    {"id": "lutra-shoe-cabinet",    "name": "Lutra Shoe Cabinet",    "size_mm": [900, 350, 1150],  "mass": 32, "wall_snap": true,  "variant_id": 47821952549105, "finish": "feature_eucalyptus", "model": "modern_wooden_cabinet",
+     "variants": {"eucalyptus": 47821952549105, "feature_eucalyptus": 47821952581873, "american_oak": 47821952614641, "japanese_black": 47821952647409, "blackwood": 47821952680177}},
+    {"id": "hikari-drinks-cabinet", "name": "Hikari Drinks Cabinet", "size_mm": [1100, 470, 1800], "mass": 60, "wall_snap": true,  "variant_id": 48340398211313, "finish": "japanese_black", "model": "modern_wooden_cabinet",
+     "variants": {"eucalyptus": 48340398211313, "feature_eucalyptus": 48340398244081, "american_oak": 48340398276849, "japanese_black": 48340398309617, "blackwood": 48340398342385}},
+    {"id": "naka-bed",              "name": "Naka Bed (Queen)",      "size_mm": [1700, 2200, 450], "mass": 70, "wall_snap": true,  "variant_id": 47782574358769, "finish": "american_oak", "shape": "bed", "estimated": true,
+     "variants": {"eucalyptus": 47782574358769, "feature_eucalyptus": 47782574391537, "american_oak": 47782574424305, "japanese_black": 47782574457073, "blackwood": 47782574489841}},
+    {"id": "logos-tv-unit",         "name": "Logos TV Unit",         "size_mm": [1800, 450, 500],  "mass": 40, "wall_snap": true,  "variant_id": 48061572808945, "finish": "blackwood", "model": "modern_wooden_cabinet", "estimated": true,
+     "variants": {"eucalyptus": 48061572808945, "feature_eucalyptus": 48061572841713, "american_oak": 48061572874481, "japanese_black": 48061572907249, "blackwood": 48061572940017}},
+    {"id": "logos-buffet",          "name": "Logos Buffet",          "size_mm": [1600, 450, 850],  "mass": 55, "wall_snap": true,  "variant_id": 48061605511409, "finish": "eucalyptus", "model": "modern_wooden_cabinet", "estimated": true,
+     "variants": {"eucalyptus": 48061605511409, "feature_eucalyptus": 48061605544177, "american_oak": 48061605576945, "japanese_black": 48061605609713, "blackwood": 48061605642481}},
+    {"id": "se-side-table",         "name": "Se Side Table",         "size_mm": [450, 450, 500],   "mass": 8,  "wall_snap": false, "variant_id": 48060316385521, "finish": "japanese_black", "model": "side_table_01", "estimated": true,
+     "variants": {"eucalyptus": 48060316385521, "feature_eucalyptus": 48060316418289, "american_oak": 48060316451057, "japanese_black": 48060316483825, "blackwood": 48060316516593}},
+    {"id": "moto-coffee-table",     "name": "Moto Coffee Table",     "size_mm": [1100, 600, 380],  "mass": 22, "wall_snap": false, "variant_id": 47745532657905, "finish": "american_oak", "model": "wooden_table_02", "estimated": true,
+     "variants": {"eucalyptus": 47745532657905, "feature_eucalyptus": 47745532690673, "american_oak": 47745532723441, "japanese_black": 47745532756209, "blackwood": 47745532788977}},
+    {"id": "taka-dining-table",     "name": "Taka Dining Table",     "size_mm": [1800, 900, 740],  "mass": 45, "wall_snap": false, "variant_id": 48363465310449, "finish": "feature_eucalyptus", "model": "wooden_table_02", "estimated": true,
+     "variants": {"eucalyptus": 48363465310449, "feature_eucalyptus": 48363465343217, "american_oak": 48363465375985, "japanese_black": 48363465408753, "blackwood": 48363465441521}}
   ]
 }

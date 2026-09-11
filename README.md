@@ -21,10 +21,12 @@ replaces it with the live collection at runtime.
 | | |
 |---|---|
 | **Place** | Tap a catalogue item, drag it in, rotate in quarter turns, drop. Three live-switchable snap modes: free, 25 cm grid, wall magnet. Overlaps and out-of-room drops are refused (green/red ghost). A dropped piece is a rigid body until it falls asleep, then it is *placed*. |
-| **Paint** | Swatches (wall paints + the store's five timbers) or a colour picker; tap a wall or the floor. Walls between the camera and the room are cut away. |
-| **Walk** | First-person capsule mover. Walking into furniture shoves it (450 N, tunable live) — a side table skids, a bed does not. `E` carries a piece and drops it wherever you are. |
+| **Paint** | Swatches (wall paints + the store's five timbers) or a colour picker; tap a wall or the floor. Painted plaster and laminate planks with real relief; the swatch is the colour you get. Walls between the camera and the room are cut away. |
+| **Light** | Swing the sun round the sky and warm it up, dim the ambient, switch on the ceiling light, add and remove floor lamps — each dimmable. Lighting is saved with the layout. |
+| **Walk** | First-person capsule mover. Walking into furniture shoves it (450 N, tunable live) — a side table skids, a bed does not. `E` carries a piece and drops it wherever you are. On a touchscreen: a stick on the left, drag to look on the right, a carry button. |
 | **Uploads** | Drop a `.glb`/`.gltf` in and it becomes a catalogue item: bounding-box collider (convex hull optional), mm-exported models auto-scaled. |
-| **Store** | Runs in an `<iframe>` on the Shopify page. The page sends the collection as the catalogue; the sim sends the layout on every change and "add to cart" with variant ids. |
+| **Looks** | The store publishes no 3D models, so each product is a generic CC0 model (Poly Haven) stretched to the product's real dimensions and tinted to its timber; beds, racks and lamps are generated. Room surfaces are PBR (albedo/normal/roughness). |
+| **Store** | Runs in an `<iframe>` on the Shopify page. The page sends the collection as the catalogue with one variant id per timber finish; the sim sends the layout on every change and "add to cart" with the variant matching each piece's finish. |
 
 ## Setup (local)
 
@@ -44,10 +46,15 @@ so in the HUD.
 
 ### Controls
 
-`1` `2` `3` Place / Paint / Walk (`Tab` cycles) · `R` rotate · `S` cycle snap
+`1` `2` `3` `4` Place / Paint / Walk / Light (`Tab` cycles) · `R` rotate · `S` cycle snap
 · `Delete` remove · `Esc` cancel drag / free the mouse · right-drag orbit ·
 wheel zoom · **Walk:** click to look, `WASD`, `E` carry/drop, `[` `]` shove
 force · `B` swap physics backend (the layout survives the swap).
+
+On a touchscreen Walk swaps the keyboard for on-screen controls (a floating
+stick, a look pad, a carry button) and hides the side panel until you leave
+Walk. To try them with a mouse: `godot --path game -- --touch` locally, or
+`?touch=1` on the web build.
 
 ## Tests
 
@@ -56,10 +63,13 @@ GODOT=~/Downloads/Godot.app/Contents/MacOS/Godot     # or wherever yours is
 $GODOT --headless --path game --import               # twice on a fresh clone
 $GODOT --headless --path game --script res://tests/test_backends.gd
 $GODOT --headless --path game --script res://tests/test_placement.gd
+$GODOT --headless --path game --script res://tests/test_touch.gd
 ```
 
-Both run on both backends. `tools/capture_shots.gd` renders screenshots into
-`shots/`; it must run **without** `--headless`.
+The first two run on both backends; `test_touch.gd` drives the on-screen
+walkthrough controls with synthetic multi-touch through the real viewport.
+`tools/capture_shots.gd` renders screenshots into `shots/`; it must run
+**without** `--headless`.
 
 ## Web build and the store
 
@@ -86,8 +96,10 @@ cd ../../.. && godot --headless --path game --export-release Web ../web/index.ht
 `room-planner`, paste `shopify/room-planner.liquid`, then add the "Room
 planner" section to a page and pick the collection. The section passes the
 store's origin to the sim (`?host=`), sends the collection as the catalogue
-(dimensions parsed from each description as `W x D x H` mm), stores the
-layout in `sessionStorage`, and turns "Add room to cart" into `/cart/add.js`.
+(dimensions parsed from each description as `W x D x H` mm, and a variant id
+per finish read off each product's "Timber" option), stores the layout in
+`sessionStorage`, and turns "Add room to cart" into `/cart/add.js` — one line
+per variant, so a shelf in oak and one in blackwood are two lines.
 
 ## Architecture notes
 
@@ -101,6 +113,14 @@ The Jolt mover was rebuilt on `PhysicsServer3D.body_test_motion()` (what
 `CharacterBody3D` uses) with a short ground probe; the brawler's
 `cast_motion` + `collide_shape` approximation was unstable under Jolt. Both
 backends now stand a capsule within 6 mm of each other.
+
+**Visuals never touch physics.** A product's collider is always the box of
+its catalogue dimensions; the generic model (`ModelLibrary`) is stretched
+per axis into that box and the generated pieces (`FurnitureShapes`) are built
+inside it. Finishes and paint are tints over textures, normalised against
+each texture's mean colour (`SurfaceMaterials.normalised`) so a swatch comes
+out as the swatch. The Compatibility renderer adds its light passes in gamma
+space, which is why `Lighting`'s defaults sit where they do.
 
 **Furniture is a ghost while it moves.** Dragging, carrying and restoring all
 drive a mesh, not a body; the body exists only between a drop and the next
@@ -117,10 +137,17 @@ receives, what a backend swap rebuilds from, and what the tests round-trip.
 
 ## Known limitations
 
-- Catalogue pieces render as tinted boxes; the store publishes no 3D models.
-  Uploaded glTF replaces the box for that item.
+- Catalogue pieces are generic stand-ins chosen by name (shelf, cabinet,
+  drawers, side table, table); they are the right size and timber, not the
+  store's designs. Uploaded glTF replaces the stand-in for that item.
 - Wall magnet assumes a rectangular room with the item's back on local −Z.
-- Walkthrough is keyboard/mouse; on touch devices Place and Paint work, Walk
-  does not yet have an on-screen stick.
-- `add_to_cart` uses the first available variant; the store's timber finish
-  variants are not mapped to the finish picker yet.
+- The finish picker only knows finishes that map onto a product's "Timber"
+  option values; a store with a differently named option gets the product's
+  default variant for every finish.
+
+## Credits
+
+Textures and models are CC0 from [Poly Haven](https://polyhaven.com):
+`plaster_grey_04`, `laminate_floor_02`, `oak_veneer_01`,
+`wooden_display_shelves_01`, `modern_wooden_cabinet`, `drawer_cabinet`,
+`side_table_01`, `wooden_table_02`, `modern_ceiling_lamp_01`.

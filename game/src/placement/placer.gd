@@ -177,6 +177,23 @@ func drop_carried(p: PlacedItem) -> void:
 	changed.emit()
 
 
+## What the room comes to at the till: one line per distinct variant, so a
+## shelf in oak and the same shelf in blackwood are two lines.
+func cart_lines() -> Array:
+	var counts := {}
+	for p in items:
+		if p.state == PlacedItem.State.GHOST:
+			continue
+		var vid := p.item.variant_for(p.finish)
+		if vid == 0:
+			continue
+		counts[vid] = counts.get(vid, 0) + 1
+	var lines := []
+	for vid in counts:
+		lines.append({"variant_id": vid, "quantity": counts[vid]})
+	return lines
+
+
 func set_finish(p: PlacedItem, key: String) -> void:
 	p.finish = key
 	p.set_color(_color_for(p))

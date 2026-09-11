@@ -19,8 +19,13 @@ signal upload_pressed
 signal clear_pressed
 signal cart_pressed
 signal export_pressed
+## group is "sun" | "ambient" | "ceiling"; key is the setting within it.
+signal light_changed(group: String, key: String, value: Variant)
+signal lamp_changed(key: String, value: Variant)
+signal add_lamp_pressed
 
-enum Tool { PLACE, PAINT, WALK }
+enum Tool { PLACE, PAINT, WALK, LIGHT }
+const TOOL_NAMES := ["Place", "Paint", "Walk", "Light"]
 
 const BTN_MIN := Vector2(0, 40)
 
@@ -34,9 +39,14 @@ var _selected_label: Label
 var _finish_opt: OptionButton
 var _paint_box: VBoxContainer
 var _walk_box: VBoxContainer
+var _light_box: VBoxContainer
+var _lamp_box: VBoxContainer
 var _picker: ColorPickerButton
 var _cart_btn: Button
 var _catalog_box: VBoxContainer
+## Sliders/toggles by "group/key", so a restored layout can move them.
+var _light_controls: Dictionary = {}
+var _syncing := false
 
 
 func build(p_catalog: Catalog, on_web: bool) -> void:
@@ -58,9 +68,9 @@ func build(p_catalog: Catalog, on_web: bool) -> void:
 	var tools := HBoxContainer.new()
 	root.add_child(tools)
 	_tool_buttons.clear()
-	for i in ["Place", "Paint", "Walk"].size():
+	for i in TOOL_NAMES.size():
 		var b := Button.new()
-		b.text = ["Place", "Paint", "Walk"][i]
+		b.text = TOOL_NAMES[i]
 		b.toggle_mode = true
 		b.custom_minimum_size = BTN_MIN
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -69,18 +79,9 @@ func build(p_catalog: Catalog, on_web: bool) -> void:
 		_tool_buttons.append(b)
 	set_tool(Tool.PLACE)
 
-	# --- placement section
-	_catalog_box = VBoxContainer.new()
-	_catalog_box.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	root.add_child(_catalog_box)
-	_snap_btn = Button.new()
-	_snap_btn.custom_minimum_size = BTN_MIN
-	_snap_btn.pressed.connect(func(): snap_cycled.emit())
-	_catalog_box.add_child(_snap_btn)
-	set_snap_name("Grid 25 cm")
-
+	# --- selected item (Place and Light tools): shared by furniture and lamps
 	_selected_box = VBoxContainer.new()
-	_catalog_box.add_child(_selected_box)
+	root.add_child(_selected_box)
 	_selected_label = Label.new()
 	_selected_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_selected_box.add_child(_selected_label)
@@ -102,7 +103,26 @@ func build(p_catalog: Catalog, on_web: bool) -> void:
 	_finish_opt.custom_minimum_size = BTN_MIN
 	_finish_opt.item_selected.connect(func(i: int): finish_chosen.emit(_finish_opt.get_item_metadata(i)))
 	_selected_box.add_child(_finish_opt)
+	# Lamp controls live in the same slot as the finish picker: a selected
+	# lamp has no timber to choose but a light to dim.
+	_lamp_box = VBoxContainer.new()
+	_selected_box.add_child(_lamp_box)
+	_toggle(_lamp_box, "On", "lamp/on", true, func(v): lamp_changed.emit("on", v))
+	_slider(_lamp_box, "Brightness", "lamp/energy", 0.0, 1.0, 0.6, func(v): lamp_changed.emit("energy", v))
+	_slider(_lamp_box, "Warmth", "lamp/warmth", 0.0, 1.0, 0.7, func(v): lamp_changed.emit("warmth", v))
+	_lamp_box.visible = false
 	_selected_box.visible = false
+
+	# --- placement section
+	_catalog_box = VBoxContainer.new()
+	_catalog_box.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	root.add_child(_catalog_box)
+	_snap_btn = Button.new()
+	_snap_btn.custom_minimum_size = BTN_MIN
+	_snap_btn.pressed.connect(func(): snap_cycled.emit())
+	_catalog_box.add_child(_snap_btn)
+	set_snap_name("Grid 25 cm")
+
 
 	var cat_label := Label.new()
 	cat_label.text = "Catalogue"
@@ -163,6 +183,32 @@ func build(p_catalog: Catalog, on_web: bool) -> void:
 	_paint_box.add_child(pall)
 	_paint_box.visible = false
 
+	# --- light section
+	_light_box = VBoxContainer.new()
+	_light_box.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	root.add_child(_light_box)
+	var sun_label := Label.new()
+	sun_label.text = "Sun"
+	_light_box.add_child(sun_label)
+	_slider(_light_box, "Height", "sun/elevation", 10.0, 80.0, 55.0, func(v): light_changed.emit("sun", "elevation", v))
+	_slider(_light_box, "Direction", "sun/azimuth", 0.0, 360.0, 330.0, func(v): light_changed.emit("sun", "azimuth", v))
+	_slider(_light_box, "Brightness", "sun/energy", 0.0, 1.0, 0.5, func(v): light_changed.emit("sun", "energy", v))
+	_slider(_light_box, "Warmth", "sun/warmth", 0.0, 1.0, 0.35, func(v): light_changed.emit("sun", "warmth", v))
+	_slider(_light_box, "Ambient", "ambient/energy", 0.0, 1.0, 0.3, func(v): light_changed.emit("ambient", "energy", v))
+	_toggle(_light_box, "Ceiling light", "ceiling/on", false, func(v): light_changed.emit("ceiling", "on", v))
+	_slider(_light_box, "Brightness", "ceiling/energy", 0.0, 1.0, 0.5, func(v): light_changed.emit("ceiling", "energy", v))
+	_slider(_light_box, "Warmth", "ceiling/warmth", 0.0, 1.0, 0.6, func(v): light_changed.emit("ceiling", "warmth", v))
+	var add_lamp := Button.new()
+	add_lamp.text = "Add floor lamp"
+	add_lamp.custom_minimum_size = BTN_MIN
+	add_lamp.pressed.connect(func(): add_lamp_pressed.emit())
+	_light_box.add_child(add_lamp)
+	var lamp_hint := Label.new()
+	lamp_hint.text = "Tap a lamp to dim it or remove it."
+	lamp_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_light_box.add_child(lamp_hint)
+	_light_box.visible = false
+
 	# --- footer
 	_walk_box = VBoxContainer.new()
 	_walk_box.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -184,10 +230,68 @@ func build(p_catalog: Catalog, on_web: bool) -> void:
 	root.add_child(_cart_btn)
 
 
+## A labelled HSlider sized for thumbs. [param cb] gets the value on change,
+## except while [method set_lighting] is moving the slider itself.
+func _slider(parent: Control, text: String, key: String, lo: float, hi: float, value: float,
+		cb: Callable) -> HSlider:
+	var row := HBoxContainer.new()
+	parent.add_child(row)
+	var l := Label.new()
+	l.text = text
+	l.custom_minimum_size = Vector2(76, 0)
+	row.add_child(l)
+	var sl := HSlider.new()
+	sl.min_value = lo
+	sl.max_value = hi
+	sl.step = (hi - lo) / 100.0
+	sl.value = value
+	sl.custom_minimum_size = Vector2(0, 32)
+	sl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	sl.value_changed.connect(func(v: float):
+		if not _syncing:
+			cb.call(v))
+	row.add_child(sl)
+	_light_controls[key] = sl
+	return sl
+
+
+func _toggle(parent: Control, text: String, key: String, value: bool, cb: Callable) -> CheckButton:
+	var t := CheckButton.new()
+	t.text = text
+	t.button_pressed = value
+	t.custom_minimum_size = BTN_MIN
+	t.toggled.connect(func(v: bool):
+		if not _syncing:
+			cb.call(v))
+	parent.add_child(t)
+	_light_controls[key] = t
+	return t
+
+
+## Move the light controls to match [param settings] (Lighting.to_dict()).
+func set_lighting(settings: Dictionary) -> void:
+	_syncing = true
+	for group in settings:
+		for key in settings[group]:
+			_set_control("%s/%s" % [group, key], settings[group][key])
+	_syncing = false
+
+
+func _set_control(key: String, value: Variant) -> void:
+	var c: Control = _light_controls.get(key)
+	if c is HSlider:
+		(c as HSlider).value = float(value)
+	elif c is CheckButton:
+		(c as CheckButton).button_pressed = bool(value)
+
+
 func refresh_items() -> void:
 	for c in _items_box.get_children():
 		c.queue_free()
 	for it in catalog.items:
+		if it.is_light():
+			continue   # fixtures are added from the Light tool
 		var b := Button.new()
 		var dims := "%d × %d × %d cm" % [roundi(it.size.x * 100), roundi(it.size.z * 100), roundi(it.size.y * 100)]
 		b.text = "%s\n%s%s" % [it.name, dims, "  (est.)" if it.estimated else ""]
@@ -208,6 +312,10 @@ func set_tool(tool: int) -> void:
 		_paint_box.visible = (tool == Tool.PAINT)
 	if _walk_box != null:
 		_walk_box.visible = (tool == Tool.WALK)
+	if _light_box != null:
+		_light_box.visible = (tool == Tool.LIGHT)
+	if _selected_box != null and tool != Tool.PLACE and tool != Tool.LIGHT:
+		_selected_box.visible = false
 
 
 func set_snap_name(n: String) -> void:
@@ -220,10 +328,20 @@ func show_selected(p: PlacedItem) -> void:
 		return
 	_selected_box.visible = true
 	_selected_label.text = p.item.name + ("" if p.valid else "  — doesn't fit here")
+	if p.item.is_light():
+		_finish_opt.visible = false
+		_lamp_box.visible = true
+		_syncing = true
+		_set_control("lamp/on", p.light["on"])
+		_set_control("lamp/energy", p.light["energy"])
+		_set_control("lamp/warmth", p.light["warmth"])
+		_syncing = false
+		return
+	_lamp_box.visible = false
 	_finish_opt.clear()
 	var idx := 0
 	var sel := 0
-	for key in catalog.finishes:
+	for key in p.item.finish_choices(catalog.finishes):
 		_finish_opt.add_item(str(catalog.finishes[key].get("name", key)))
 		_finish_opt.set_item_metadata(idx, key)
 		if key == p.finish:

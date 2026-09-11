@@ -6,7 +6,7 @@ extends SceneTree
 ##   godot --path game --script res://tools/capture_shots.gd
 ##
 ## Places a few catalogue items, paints a wall, and shoots the planner view,
-## then the walkthrough view.
+## the walkthrough view, and an evening scene with the lamps on.
 
 func _init() -> void:
 	run.call_deferred()
@@ -38,7 +38,6 @@ func run() -> void:
 			placer.cancel()
 	room.paint("north", Color("#7f9a7a"))
 	room.paint("east", Color("#e3d9c6"))
-	room.paint("floor", Color("#cfcac2"))
 	for i in 90:
 		await process_frame
 	DirAccess.make_dir_recursive_absolute("res://../shots")
@@ -59,4 +58,20 @@ func run() -> void:
 		await process_frame
 	get_root().get_viewport().get_texture().get_image().save_png("res://../shots/walk.png")
 	print("saved shots/walk.png")
+
+	# Evening: sun low and warm, ceiling light on, a floor lamp by the bed.
+	scene._set_tool(CatalogPanel.Tool.LIGHT)
+	placer.snap_mode = Placer.Snap.FREE
+	var lamp := placer.begin(catalog.find("floor-lamp"), Vector3(-0.6, 0, -1.6))
+	placer.drag_to(Vector3(-0.6, 0, -1.6))
+	lamp.set_light(true, 0.8, 0.8)
+	placer.drop()
+	var lighting: Lighting = scene.lighting
+	lighting.from_dict({"sun": {"elevation": 14.0, "azimuth": 250.0, "energy": 0.25, "warmth": 0.9},
+		"ambient": {"energy": 0.25}, "ceiling": {"on": true, "energy": 0.6, "warmth": 0.6}})
+	scene._panel.set_lighting(lighting.to_dict())
+	for i in 60:
+		await process_frame
+	get_root().get_viewport().get_texture().get_image().save_png("res://../shots/light.png")
+	print("saved shots/light.png")
 	quit()

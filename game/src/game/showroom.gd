@@ -5,14 +5,19 @@ extends Node3D
 ##   Place  drag furniture in from the catalogue, rotate, drop; it settles.
 ##   Paint  pick a swatch, tap a wall or the floor.
 ##   Walk   first person: WASD, mouse look, E to carry / drop, bump into things.
+##   Light  swing the sun, dim the ambient and ceiling light, add floor lamps.
 ##
 ## Keys (desktop)
-##   1 / 2 / 3     Place / Paint / Walk        Tab   cycle tools
+##   1 / 2 / 3 / 4 Place / Paint / Walk / Light  Tab   cycle tools
 ##   R             rotate the dragged item     S     cycle snap mode (Place)
 ##   Delete        remove the dragged item     Esc   cancel drag / release mouse
 ##   B             swap physics backend (Box3D <-> Jolt), same layout
 ##   [ ]           shove force down / up (Walk), live
 ##   RMB drag      orbit    Wheel  zoom
+##
+## On a touchscreen Walk gets on-screen controls instead (TouchControls): a
+## stick on the left, drag-to-look on the right, a carry button. The side
+## panel steps aside while walking so a phone gets the whole room.
 ##
 ## Everything physical goes through the PhysicsBackend seam; this file owns
 ## cameras, input and wiring only.
@@ -27,6 +32,7 @@ var placer := Placer.new()
 var painter := Painter.new()
 var shopper := Shopper.new()
 var bridge := HostBridge.new()
+var lighting := Lighting.new()
 
 var _world_root: Node3D
 var _visual_root: Node3D
@@ -34,6 +40,7 @@ var _cam_pivot: Node3D
 var _camera: Camera3D
 var _panel: CatalogPanel
 var _hud: Label
+var _touch: TouchControls
 var _file_dialog: FileDialog
 
 var _tool := CatalogPanel.Tool.PLACE
@@ -53,7 +60,7 @@ func _ready() -> void:
 	_build_environment()
 	_build_ui()
 	bridge.catalog_received.connect(_on_host_catalog)
-	bridge.layout_received.connect(func(d): Layout.restore(d, placer, room))
+	bridge.layout_received.connect(_restore_layout)
 	bridge.clear_requested.connect(func(): placer.clear())
 	bridge.model_received.connect(_on_model_bytes)
 	bridge.setup()
@@ -63,27 +70,8 @@ func _ready() -> void:
 #region Setup
 
 func _build_environment() -> void:
-	var sun := DirectionalLight3D.new()
-	sun.rotation = Vector3(deg_to_rad(-55), deg_to_rad(-30), 0)
-	# The Compatibility renderer does not tonemap, so light energies must sum
-	# to about one on a lit face or pale timber clips to white.
-	sun.light_energy = 0.65
-	sun.shadow_enabled = true
-	add_child(sun)
-	var fill := DirectionalLight3D.new()
-	fill.rotation = Vector3(deg_to_rad(-30), deg_to_rad(150), 0)
-	fill.light_energy = 0.15
-	add_child(fill)
-
-	var env := Environment.new()
-	env.background_mode = Environment.BG_COLOR
-	env.background_color = Color(0.94, 0.93, 0.9)
-	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color(1, 1, 1)
-	env.ambient_light_energy = 0.3
-	var we := WorldEnvironment.new()
-	we.environment = env
-	add_child(we)
+	lighting.setup(self, room.wall_height)
+	lighting.changed.connect(_on_layout_changed)
 
 	_cam_pivot = Node3D.new()
 	add_child(_cam_pivot)
@@ -121,7 +109,11 @@ func _build_ui() -> void:
 	_panel.upload_pressed.connect(_on_upload)
 	_panel.clear_pressed.connect(func(): placer.clear())
 	_panel.cart_pressed.connect(_add_to_cart)
-	_panel.export_pressed.connect(func(): print(Layout.to_json(Layout.capture(placer, room))))
+	_panel.export_pressed.connect(func(): print(Layout.to_json(Layout.capture(placer, room, lighting))))
+	_panel.light_changed.connect(_on_light_changed)
+	_panel.lamp_changed.connect(_on_lamp_changed)
+	_panel.add_lamp_pressed.connect(func(): _spawn_item(catalog.find("floor-lamp")))
+	_panel.set_lighting(lighting.to_dict())
 
 	var hud_panel := PanelContainer.new()
 	hud_panel.set_anchors_preset(Control.PRESET_TOP_RIGHT)
@@ -134,6 +126,14 @@ func _build_ui() -> void:
 	_hud.add_theme_font_size_override("font_size", 13)
 	_hud.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	hud_panel.add_child(_hud)
+
+	if TouchControls.wanted():
+		_touch = TouchControls.new()
+		_touch.visible = false
+		layer.add_child(_touch)
+		_touch.look.connect(func(rel: Vector2): shopper.turn(rel.x * 0.005, rel.y * 0.005))
+		_touch.interact_pressed.connect(func(): shopper.interact())
+		_touch.exit_pressed.connect(func(): _set_tool(CatalogPanel.Tool.PLACE))
 
 	if not HostBridge.is_web():
 		_file_dialog = FileDialog.new()
@@ -148,7 +148,7 @@ func _build_ui() -> void:
 
 func _start_backend() -> void:
 	if backend != null:
-		_pending_layout = Layout.capture(placer, room)
+		_pending_layout = Layout.capture(placer, room, lighting)
 		shopper.release()
 		placer.clear()
 		backend.shutdown()
@@ -175,9 +175,14 @@ func _start_backend() -> void:
 		placer.changed.connect(_on_layout_changed)
 	shopper.setup(backend, placer, Vector3(0, 0.0, ROOM_D * 0.5 - 1.0))
 	if not _pending_layout.is_empty():
-		Layout.restore(_pending_layout, placer, room)
+		_restore_layout(_pending_layout)
 		_pending_layout = {}
 	_set_tool(_tool)
+
+
+func _restore_layout(data: Dictionary) -> void:
+	Layout.restore(data, placer, room, lighting)
+	_panel.set_lighting(lighting.to_dict())
 
 #endregion
 
@@ -191,6 +196,9 @@ func _set_tool(tool: int) -> void:
 			shopper.interact()
 	_tool = tool as CatalogPanel.Tool
 	_panel.set_tool(tool)
+	if _touch != null:
+		_touch.visible = (tool == CatalogPanel.Tool.WALK)
+		_panel.visible = not _touch.visible
 	painter.clear_hover()
 	if tool != CatalogPanel.Tool.PLACE and placer.dragging != null:
 		placer.cancel()
@@ -198,7 +206,12 @@ func _set_tool(tool: int) -> void:
 
 
 func _spawn_item(item: FurnitureItem) -> void:
-	_set_tool(CatalogPanel.Tool.PLACE)
+	if item == null:
+		return
+	# A lamp added from the Light tool is dragged in right there; anything
+	# else is a Place job.
+	if _tool != CatalogPanel.Tool.LIGHT or not item.is_light():
+		_set_tool(CatalogPanel.Tool.PLACE)
 	placer.begin(item, Vector3.ZERO)
 	_press_drag = false
 	_select(placer.dragging)
@@ -220,6 +233,23 @@ func _delete_selected() -> void:
 		placer.remove(_selected)
 	_select(null)
 
+
+func _on_light_changed(group: String, key: String, value: Variant) -> void:
+	match group:
+		"sun": lighting.set_sun(key, float(value))
+		"ambient": lighting.set_ambient(float(value))
+		"ceiling": lighting.set_ceiling(key, value)
+
+
+func _on_lamp_changed(key: String, value: Variant) -> void:
+	var p := placer.dragging if placer.dragging != null else _selected
+	if p == null or not p.item.is_light():
+		return
+	var l := p.light.duplicate()
+	l[key] = value
+	p.set_light(bool(l["on"]), float(l["energy"]), float(l["warmth"]))
+	placer.changed.emit()
+
 #endregion
 
 
@@ -236,6 +266,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			_input_paint(event)
 		CatalogPanel.Tool.WALK:
 			_input_walk(event)
+		CatalogPanel.Tool.LIGHT:
+			_input_light(event)
 
 
 func _key(k: InputEventKey) -> void:
@@ -243,7 +275,8 @@ func _key(k: InputEventKey) -> void:
 		KEY_1: _set_tool(CatalogPanel.Tool.PLACE)
 		KEY_2: _set_tool(CatalogPanel.Tool.PAINT)
 		KEY_3: _set_tool(CatalogPanel.Tool.WALK)
-		KEY_TAB: _set_tool((_tool + 1) % 3)
+		KEY_4: _set_tool(CatalogPanel.Tool.LIGHT)
+		KEY_TAB: _set_tool((_tool + 1) % CatalogPanel.TOOL_NAMES.size())
 		KEY_R: placer.rotate()
 		KEY_S:
 			if _tool == CatalogPanel.Tool.PLACE:
@@ -352,7 +385,42 @@ func _input_paint(event: InputEvent) -> void:
 			painter.set_hover(room.pick_surface(ray[0], ray[1]))
 
 
+## Light tool: a lamp being dragged in behaves as in Place; otherwise a tap
+## selects a lamp to dim, and the view orbits like everywhere else.
+func _input_light(event: InputEvent) -> void:
+	if placer.dragging != null:
+		_input_place(event)
+		return
+	if event is InputEventMouseButton:
+		var mb := event as InputEventMouseButton
+		if mb.button_index == MOUSE_BUTTON_WHEEL_UP:
+			_dist = maxf(2.5, _dist * 0.9)
+		elif mb.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+			_dist = minf(20.0, _dist * 1.1)
+		elif mb.button_index == MOUSE_BUTTON_RIGHT or mb.button_index == MOUSE_BUTTON_MIDDLE:
+			_orbiting = mb.pressed
+		elif mb.button_index == MOUSE_BUTTON_LEFT:
+			if mb.pressed:
+				var ray := _pointer_ray(mb.position)
+				var hit := placer.pick(ray[0], ray[1])
+				if hit != null and hit.item.is_light():
+					_select(hit)
+				else:
+					_select(null)
+					_orbiting = true
+			else:
+				_orbiting = false
+	elif event is InputEventMouseMotion and _orbiting:
+		var mm := event as InputEventMouseMotion
+		_yaw -= mm.relative.x * 0.006
+		_pitch = clampf(_pitch - mm.relative.y * 0.006, -1.5, -0.15)
+	elif event is InputEventMagnifyGesture:
+		_dist = clampf(_dist / (event as InputEventMagnifyGesture).factor, 2.5, 20.0)
+
+
 func _input_walk(event: InputEvent) -> void:
+	if event.device == InputEvent.DEVICE_ID_EMULATION:
+		return   # a touch dressed as a mouse: pointer capture is meaningless
 	if event is InputEventMouseButton and event.pressed:
 		if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
 			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
@@ -369,6 +437,9 @@ func _walk_intent() -> Vector3:
 	if Input.is_key_pressed(KEY_S) or Input.is_key_pressed(KEY_DOWN): v.z += 1
 	if Input.is_key_pressed(KEY_A) or Input.is_key_pressed(KEY_LEFT): v.x -= 1
 	if Input.is_key_pressed(KEY_D) or Input.is_key_pressed(KEY_RIGHT): v.x += 1
+	if _touch != null and _touch.visible:
+		var st := _touch.stick_vector()
+		v += Vector3(st.x, 0, st.y)
 	return v
 
 #endregion
@@ -386,6 +457,8 @@ func _physics_process(dt: float) -> void:
 func _process(_dt: float) -> void:
 	_update_camera()
 	_update_hud()
+	if _touch != null:
+		_touch.set_carrying(shopper.carrying != null)
 
 
 func _update_camera() -> void:
@@ -419,10 +492,17 @@ func _update_hud() -> void:
 			if painter.hover != "":
 				lines.append("Over: %s" % painter.hover)
 		CatalogPanel.Tool.WALK:
-			lines.append("WALK — click to look, WASD, E carry/drop, Esc frees mouse")
+			if _touch != null:
+				lines.append("WALK — stick to move, drag to look, walk into things to shove them")
+			else:
+				lines.append("WALK — click to look, WASD, E carry/drop, Esc frees mouse")
 			lines.append("Shove force: %d N ([ ])" % int(shopper.shove_force))
 			if shopper.carrying != null:
 				lines.append("Carrying %s" % shopper.carrying.item.name)
+		CatalogPanel.Tool.LIGHT:
+			lines.append("LIGHT — sliders for the sun and ceiling light; tap a lamp to dim it")
+			if placer.dragging != null:
+				lines.append("Placing %s — tap to drop" % placer.dragging.item.name)
 	var placed := 0
 	var bad := 0
 	for p in placer.items:
@@ -438,7 +518,7 @@ func _update_hud() -> void:
 
 
 func _on_layout_changed() -> void:
-	bridge.post(Layout.capture(placer, room))
+	bridge.post(Layout.capture(placer, room, lighting))
 	if _selected != null:
 		_panel.show_selected(_selected)
 
@@ -469,14 +549,6 @@ func _on_model_bytes(bytes: PackedByteArray, filename: String) -> void:
 
 
 func _add_to_cart() -> void:
-	var counts := {}
-	for p in placer.items:
-		if p.state == PlacedItem.State.GHOST or p.item.variant_id == 0:
-			continue
-		counts[p.item.variant_id] = counts.get(p.item.variant_id, 0) + 1
-	var items := []
-	for vid in counts:
-		items.append({"variant_id": vid, "quantity": counts[vid]})
-	bridge.post({"type": "add_to_cart", "items": items})
+	bridge.post({"type": "add_to_cart", "items": placer.cart_lines()})
 
 #endregion

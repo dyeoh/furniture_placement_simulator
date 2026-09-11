@@ -11,7 +11,7 @@ extends RefCounted
 const VERSION := 1
 
 
-static func capture(placer: Placer, room: RoomBuilder) -> Dictionary:
+static func capture(placer: Placer, room: RoomBuilder, lighting: Lighting = null) -> Dictionary:
 	var items := []
 	for p in placer.items:
 		if p.state == PlacedItem.State.GHOST:
@@ -20,18 +20,21 @@ static func capture(placer: Placer, room: RoomBuilder) -> Dictionary:
 	var paint := {}
 	for s in RoomBuilder.SURFACES:
 		paint[s] = "#" + room.paint_color(s).to_html(false)
-	return {
+	var data := {
 		"version": VERSION,
 		"room": {"width": room.width, "depth": room.depth},
 		"items": items,
 		"paint": paint,
 	}
+	if lighting != null:
+		data["lighting"] = lighting.to_dict()
+	return data
 
 
 ## Rebuild from a capture. Items are committed straight to bodies -- they drop
 ## the couple of centimetres and settle, which is also what proves the layout
 ## was physically stable.
-static func restore(data: Dictionary, placer: Placer, room: RoomBuilder) -> void:
+static func restore(data: Dictionary, placer: Placer, room: RoomBuilder, lighting: Lighting = null) -> void:
 	placer.clear()
 	for d in data.get("items", []):
 		if not (d is Dictionary):
@@ -47,11 +50,16 @@ static func restore(data: Dictionary, placer: Placer, room: RoomBuilder) -> void
 		# Bypass snapping: the stored position is already exact.
 		p.position = Vector3(float(d.get("x", 0.0)), 0.0, float(d.get("z", 0.0)))
 		p.valid = placer.validate(p)
+		if d.get("light") is Dictionary and item.is_light():
+			var l: Dictionary = d["light"]
+			p.set_light(bool(l.get("on", true)), float(l.get("energy", 0.6)), float(l.get("warmth", 0.7)))
 		placer.dragging = null
 		placer._commit(p)
 	var paint: Dictionary = data.get("paint", {})
 	for s in paint:
 		room.paint(str(s), Color(str(paint[s])))
+	if lighting != null and data.get("lighting") is Dictionary:
+		lighting.from_dict(data["lighting"])
 	placer.changed.emit()
 
 

@@ -118,6 +118,7 @@ jobs:
           # binary is not built on Linux); the tests degrade to it and still
           # exercise placement, layout and the mover contract.
           "$GODOT" --headless --path game --script res://tests/test_placement.gd
+          "$GODOT" --headless --path game --script res://tests/test_touch.gd
 
       - name: Export
         run: |

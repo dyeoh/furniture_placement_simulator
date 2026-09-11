@@ -48,6 +48,27 @@ func run() -> void:
 		var shelf := catalog.find("segu-shelf")
 		check("mm -> m conversion (W,H,D)", shelf != null and shelf.size.is_equal_approx(Vector3(1.35, 2.1, 0.3)),
 			str(shelf.size) if shelf else "missing")
+		check("variant per finish", shelf.variant_for("blackwood") == 47737160925425
+			and shelf.variant_for("american_oak") == 47737160859889)
+		check("unknown finish falls back to default variant", shelf.variant_for("velvet") == shelf.variant_id)
+		var single := FurnitureItem.from_dict({"id": "one", "variant_id": 7, "finish": "sage"}, catalog.finishes)
+		check("single-variant item offers every finish", single.finish_choices(catalog.finishes).size() == 5
+			and single.variant_for("blackwood") == 7)
+		var partial := FurnitureItem.from_dict({"id": "two", "finish": "japanese_black",
+			"variants": {"eucalyptus": 11, "blackwood": 12}}, catalog.finishes)
+		check("default finish must be purchasable", partial.finish == "eucalyptus", partial.finish)
+		check("picker limited to sold finishes", partial.finish_choices(catalog.finishes) == ["eucalyptus", "blackwood"])
+		# Every product gets a model or generated shape; the lamp fixture is a light.
+		var unresolved := []
+		for it in catalog.items:
+			if it.model == "" and it.shape_kind == "":
+				unresolved.append(it.id)
+		check("every item has a model or shape", unresolved.is_empty(), str(unresolved))
+		check("model inferred from a store title", FurnitureItem.from_dict({"id": "x", "name": "Strata Buffet"}, catalog.finishes).model == "modern_wooden_cabinet")
+		check("bed inferred, not bedside", FurnitureItem.from_dict({"id": "y", "name": "Naka Bed"}, catalog.finishes).shape_kind == "bed"
+			and FurnitureItem.from_dict({"id": "z", "name": "Lutra Bedside Table"}, catalog.finishes).shape_kind == "")
+		var lamp := catalog.find("floor-lamp")
+		check("floor lamp fixture present", lamp != null and lamp.is_light() and lamp.variant_id == 0)
 
 		var room := RoomBuilder.new()
 		room.width = 6.0
@@ -70,6 +91,10 @@ func run() -> void:
 		placer.drag_to(Vector3(0.5, 0, -0.25))
 		check("drop accepted", placer.drop())
 		check("body created", table.body >= 0 and table.state == PlacedItem.State.SETTLING)
+		# The visual is a fitted model, the collider is still the catalogue box.
+		var model_node := table.node.get_node_or_null("Model_side_table_01")
+		check("model visual fitted", model_node != null)
+		check("aabb is the catalogue box", table.aabb(backend).size.is_equal_approx(table.item.size), str(table.aabb(backend).size))
 
 		# --- overlap is refused
 		var second := placer.begin(catalog.find("se-side-table"))
@@ -116,18 +141,51 @@ func run() -> void:
 		check("re-drop", placer.drop())
 		await settle(backend, placer)
 
-		# --- layout round-trip
+		# --- cart: the finish decides the variant
+		placer.set_finish(table, "blackwood")
+		var lines := placer.cart_lines()
+		var by_vid := {}
+		for l in lines:
+			by_vid[l["variant_id"]] = l["quantity"]
+		check("cart lines split by finish", by_vid.get(48060316516593, 0) == 1
+			and by_vid.get(48060316483825, 0) == 1 and by_vid.get(47737160859889, 0) == 1, str(lines))
+
+		# --- a lamp: placed like furniture, dimmable, never for sale
+		var lamp_p := placer.begin(catalog.find("floor-lamp"))
+		placer.drag_to(Vector3(2.0, 0, -1.5))
+		lamp_p.set_light(false, 0.25, 0.9)
+		check("lamp drop", placer.drop())
+		check("lamp has a light node", lamp_p.node.get_child_count() > 0 and lamp_p.node.find_children("*", "OmniLight3D", true, false).size() == 1)
+		check("lamp not in cart", placer.cart_lines().size() == 3)
+		await settle(backend, placer)
+
+		# --- layout round-trip, lighting included
 		room.paint("north", Color("#b3624a"))
-		var data := Layout.capture(placer, room)
-		check("capture has 3 items", data["items"].size() == 3)
+		var lighting := Lighting.new()
+		lighting.setup(stage, room.wall_height)
+		lighting.set_sun("azimuth", 123.0)
+		lighting.set_ceiling("on", true)
+		var data := Layout.capture(placer, room, lighting)
+		check("capture has 4 items", data["items"].size() == 4)
 		check("capture has paint", data["paint"]["north"] == "#b3624a")
+		check("capture has lighting", data["lighting"]["sun"]["azimuth"] == 123.0 and data["lighting"]["ceiling"]["on"] == true)
 		var json := Layout.to_json(data)
 		placer.clear()
 		room.paint("north", Color.WHITE)
+		lighting.set_sun("azimuth", 0.0)
+		lighting.set_ceiling("on", false)
 		check("clear", placer.items.is_empty())
-		Layout.restore(Layout.from_json(json), placer, room)
-		check("restore count", placer.items.size() == 3)
+		Layout.restore(Layout.from_json(json), placer, room, lighting)
+		check("restore count", placer.items.size() == 4)
 		check("restore paint", room.paint_color("north").is_equal_approx(Color("#b3624a")))
+		check("restore lighting", lighting.settings["sun"]["azimuth"] == 123.0 and lighting.settings["ceiling"]["on"] == true
+			and lighting.ceiling_light.visible)
+		var restored_lamp: PlacedItem = null
+		for p in placer.items:
+			if p.item.is_light():
+				restored_lamp = p
+		check("restore lamp state", restored_lamp != null and restored_lamp.light["on"] == false
+			and is_equal_approx(float(restored_lamp.light["energy"]), 0.25), str(restored_lamp.light if restored_lamp else null))
 		var restored_ok := true
 		for p in placer.items:
 			var orig = null
@@ -137,6 +195,7 @@ func run() -> void:
 			restored_ok = restored_ok and orig != null
 		check("restore positions/yaw", restored_ok)
 		check("restored items settle", (await settle(backend, placer)) >= 0)
+		placer.remove(restored_lamp)
 
 		# --- walkthrough carry & drop
 		var shopper := Shopper.new()

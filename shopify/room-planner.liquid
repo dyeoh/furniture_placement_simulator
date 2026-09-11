@@ -5,7 +5,8 @@
   Pages) in an <iframe> and wires it to the store:
 
     store  -> sim   the products of a collection, as a catalogue (dimensions
-                    parsed from each product description, "W x D x H" in mm)
+                    parsed from each product description, "W x D x H" in mm;
+                    one variant id per timber finish from the "Timber" option)
     sim    -> store "add_to_cart" with variant ids, forwarded to /cart/add.js;
                     "layout" on every change (kept in sessionStorage so a
                     reload restores the room)
@@ -68,6 +69,12 @@
           price: {{ product.price | default: 0 }},
           image: {{ product.featured_image | image_url: width: 300 | json }},
           description: {{ product.description | strip_html | strip_newlines | truncate: 400 | json }},
+          options: {{ product.options | json }},
+          variants: [
+            {%- for v in product.variants -%}
+            { id: {{ v.id }}, options: {{ v.options | json }}, available: {{ v.available }} }{% unless forloop.last %},{% endunless %}
+            {%- endfor -%}
+          ],
           finish: 'american_oak',
           wall_snap: true
         }{% unless forloop.last %},{% endunless %}
@@ -76,6 +83,11 @@
     };
     var dims = /(\d{3,4})\s*[x×]\s*(\d{3,4})\s*[x×]\s*(\d{3,4})/i;
     var finishes = Object.keys(catalog.finishes);
+    // "Japanese Black [American Oak]" -> "japanese_black": the bracket is the
+    // base timber under the stain, not a different finish.
+    function finishKey(title) {
+      return String(title).replace(/\s*\[.*$/, '').trim().toLowerCase().replace(/\s+/g, '_');
+    }
     catalog.items.forEach(function (it, i) {
       var m = dims.exec(it.description || '');
       if (m) {
@@ -89,7 +101,19 @@
       it.mass = Math.max(5, Math.min(120, Math.round(v * 140)));
       // Tables do not belong against walls.
       it.wall_snap = !/table/i.test(it.name) || /bedside|side table/i.test(it.name);
-      it.finish = finishes[i % finishes.length];
+      // One variant per finish, read off the "Timber" option (the variant
+      // title when a product has no such option). Finishes the store does
+      // not sell this piece in are left out so the picker cannot offer them.
+      var timber = it.options.indexOf('Timber');
+      var byFinish = {};
+      it.variants.forEach(function (v) {
+        var key = finishKey(timber >= 0 ? v.options[timber] : v.options.join(' / '));
+        if (catalog.finishes[key] && v.available && !byFinish[key]) { byFinish[key] = v.id; }
+      });
+      it.variants = byFinish;
+      var sold = Object.keys(byFinish);
+      it.finish = sold.length ? sold[i % sold.length] : finishes[i % finishes.length];
+      delete it.options;
       delete it.description;
     });
 

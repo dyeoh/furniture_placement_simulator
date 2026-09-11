@@ -31,11 +31,21 @@ var settle_time := 0.0
 ## the walkthrough raises it to carry an item at chest height, and a drop
 ## commits the body from up there so it visibly falls.
 var lift_y := 0.0
+## Lamp state, for items whose catalogue entry is a light: on, energy (0..1
+## of LIGHT_MAX_ENERGY), warmth (0 = daylight white, 1 = candle).
+var light := {"on": true, "energy": 0.6, "warmth": 0.7}
+
+const LIGHT_MAX_ENERGY := 3.0
+const LIGHT_RANGE := 5.0
 
 var node: Node3D
 var _tint_mesh: MeshInstance3D
 var _ghost_mat: StandardMaterial3D
-var _box_mat: StandardMaterial3D
+## The timber material shared by every generated part, or null when the
+## visual is a model (ModelLibrary retints those) or an upload.
+var _wood_mat: StandardMaterial3D
+var _model_node: Node3D
+var _omni: OmniLight3D
 
 
 func angle() -> float:
@@ -88,16 +98,22 @@ func build_visual(parent: Node3D, color: Color) -> void:
 		if inst is Node3D:
 			(inst as Node3D).position = item.mesh_offset
 		node.add_child(inst)
+	elif item.model != "" and ModelLibrary.has(item.model):
+		_model_node = ModelLibrary.instantiate(item.model, item.size)
+		node.add_child(_model_node)
+		ModelLibrary.tint(_model_node, item.model, color)
 	else:
-		var mesh := BoxMesh.new()
-		mesh.size = item.size
-		var mi := MeshInstance3D.new()
-		mi.mesh = mesh
-		_box_mat = StandardMaterial3D.new()
-		_box_mat.albedo_color = color
-		_box_mat.roughness = 0.55
-		mi.material_override = _box_mat
-		node.add_child(mi)
+		_wood_mat = SurfaceMaterials.wood(color)
+		node.add_child(FurnitureShapes.build(item.shape_kind, item.size, _wood_mat))
+	if item.is_light():
+		_omni = OmniLight3D.new()
+		_omni.omni_range = LIGHT_RANGE
+		_omni.omni_attenuation = 1.2
+		_omni.shadow_enabled = false
+		# Just under the shade, so the shade itself catches the light.
+		_omni.position = Vector3(0, item.size.y * 0.5 - item.size.y * 0.3, 0)
+		node.add_child(_omni)
+		apply_light()
 	# Validity overlay: a translucent shell slightly larger than the item. Used
 	# instead of tinting the item's own material so uploaded models -- whose
 	# materials we do not own -- get the same green/red feedback.
@@ -116,8 +132,23 @@ func build_visual(parent: Node3D, color: Color) -> void:
 
 
 func set_color(color: Color) -> void:
-	if _box_mat != null:
-		_box_mat.albedo_color = color
+	if _wood_mat != null:
+		SurfaceMaterials.tint(_wood_mat, "oak_veneer_01", color)
+	elif _model_node != null:
+		ModelLibrary.tint(_model_node, item.model, color)
+
+
+func set_light(on: bool, energy: float, warmth: float) -> void:
+	light = {"on": on, "energy": clampf(energy, 0.0, 1.0), "warmth": clampf(warmth, 0.0, 1.0)}
+	apply_light()
+
+
+func apply_light() -> void:
+	if _omni == null:
+		return
+	_omni.visible = bool(light["on"])
+	_omni.light_energy = float(light["energy"]) * LIGHT_MAX_ENERGY
+	_omni.light_color = Lighting.warmth_color(float(light["warmth"]))
 
 
 func set_tint(show: bool, ok: bool) -> void:
@@ -152,13 +183,19 @@ func free_visual() -> void:
 		node.queue_free()
 	node = null
 	_tint_mesh = null
+	_wood_mat = null
+	_model_node = null
+	_omni = null
 
 #endregion
 
 
 func to_dict() -> Dictionary:
-	return {
+	var d := {
 		"id": item.id,
 		"x": snappedf(position.x, 0.001), "z": snappedf(position.z, 0.001),
 		"yaw": yaw, "finish": finish,
 	}
+	if item.is_light():
+		d["light"] = light.duplicate()
+	return d
