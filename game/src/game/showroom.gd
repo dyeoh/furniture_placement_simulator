@@ -32,6 +32,7 @@ var painter := Painter.new()
 var shopper := Shopper.new()
 var bridge := HostBridge.new()
 var lighting := Lighting.new()
+var quality := Quality.new()
 
 var _world_root: Node3D
 var _visual_root: Node3D
@@ -69,7 +70,10 @@ func _ready() -> void:
 	bridge.layout_received.connect(_restore_layout)
 	bridge.clear_requested.connect(func(): placer.clear())
 	bridge.model_received.connect(_on_model_bytes)
-	bridge.setup()
+	quality.decide()
+	quality.apply(get_viewport(), lighting)
+	quality.changed.connect(func(_low: bool): quality.apply(get_viewport(), lighting))
+	bridge.setup({"quality": quality.label()})
 	_start_backend()
 
 
@@ -526,7 +530,8 @@ func _physics_process(dt: float) -> void:
 	placer.update(dt)
 
 
-func _process(_dt: float) -> void:
+func _process(dt: float) -> void:
+	quality.watch(dt)
 	_update_camera()
 	_update_hud()
 	if _touch != null:
@@ -553,7 +558,8 @@ func _update_camera() -> void:
 
 func _update_hud() -> void:
 	var lines := PackedStringArray()
-	lines.append("Backend: %s   (B to swap)" % PhysicsFactory.backend_name(backend))
+	lines.append("Backend: %s   (B to swap)%s" % [PhysicsFactory.backend_name(backend),
+		"   ·   low-spec mode" if quality.low else ""])
 	match _tool:
 		CatalogPanel.Tool.PLACE:
 			lines.append("PLACE — tap a catalogue item, drag, tap to drop")

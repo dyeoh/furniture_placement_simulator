@@ -13,3 +13,6 @@ game/bin/*.wasm
 # Web export output; CI publishes it, nobody commits it.
 /web/
 shots/
+
+# Playwright smoke test dependencies (tests/web).
+node_modules/

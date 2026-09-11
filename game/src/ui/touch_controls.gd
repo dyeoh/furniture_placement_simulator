@@ -37,9 +37,7 @@ static func wanted() -> bool:
 		return true
 	if OS.get_cmdline_user_args().has("--touch"):
 		return true
-	if OS.has_feature("web"):
-		return "touch=1" in str(JavaScriptBridge.eval("location.search", true))
-	return false
+	return HostBridge.query_param("touch") == "1"
 
 
 func _ready() -> void:

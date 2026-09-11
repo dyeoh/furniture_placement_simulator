@@ -32,16 +32,27 @@ static func is_web() -> bool:
 	return OS.has_feature("web")
 
 
-func setup() -> void:
+## A query-string value from the page URL (`?host=…&quality=low`); empty
+## off the web or when absent.
+static func query_param(name: String) -> String:
+	if not is_web():
+		return ""
+	var search := str(JavaScriptBridge.eval("location.search", true))
+	for part in search.trim_prefix("?").split("&"):
+		if part.begins_with(name + "="):
+			return part.substr(name.length() + 1).uri_decode()
+	return ""
+
+
+## [param ready_extra] rides along in the "ready" message, e.g. the quality
+## tier chosen, so the page (or a smoke test) can see what it got.
+func setup(ready_extra: Dictionary = {}) -> void:
 	if not is_web():
 		return
 	# ?host=https://store.example pins the accepted message origin. Without it
 	# any parent is accepted, which is fine for a local preview and not for a
 	# storefront -- the Liquid section always passes it.
-	var search := str(JavaScriptBridge.eval("location.search", true))
-	for part in search.trim_prefix("?").split("&"):
-		if part.begins_with("host="):
-			_allowed_origin = part.substr(5).uri_decode()
+	_allowed_origin = query_param("host")
 	_on_message = JavaScriptBridge.create_callback(_message)
 	var window := JavaScriptBridge.get_interface("window")
 	window.addEventListener("message", _on_message)
@@ -66,7 +77,9 @@ func setup() -> void:
 		};
 	""", true)
 	_on_file = JavaScriptBridge.create_callback(_file_picked)
-	post({"type": "ready"})
+	var ready := {"type": "ready"}
+	ready.merge(ready_extra)
+	post(ready)
 
 
 func post(msg: Dictionary) -> void:

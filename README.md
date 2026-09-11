@@ -68,6 +68,17 @@ $GODOT --headless --path game --script res://tests/test_touch.gd
 
 The first two run on both backends; `test_touch.gd` drives the on-screen
 walkthrough controls with synthetic multi-touch through the real viewport.
+
+**Browser smoke test.** CI also boots the fresh export in Chromium, WebKit
+(Safari's engine) and Firefox, plus a phone profile in low-spec mode, and
+fails the deploy if the sim never posts `ready`, the loader shows an error,
+or anything is logged at `console.error`. Locally:
+
+```sh
+cd tests/web && npm ci && npx playwright install chromium webkit firefox
+node smoke.mjs ../../web                                   # a local export
+node smoke.mjs https://dyeoh.github.io/furniture_placement_simulator/   # or the live one
+```
 `tools/capture_shots.gd` renders screenshots into `shots/`; it must run
 **without** `--headless`.
 
@@ -111,6 +122,17 @@ store's origin to the sim (`?host=`), sends the collection as the catalogue
 per finish read off each product's "Timber" option), stores the layout in
 `sessionStorage`, and turns "Add room to cart" into `/cart/add.js` — one line
 per variant, so a shelf in oak and one in blackwood are two lines.
+
+**Device support.** The build needs WebGL 2 and WebAssembly and nothing
+else — no threads, no GPU texture compression — which puts the floor at
+iOS 15 / Android Chrome 2016 / desktop browsers of 2017. Below that the
+loader says so. Weak devices (≤ 2 GB or ≤ 2 cores) and anything that
+averages under 30 fps after start-up get **low-spec mode**: 3D at 70%
+resolution, no ceiling-light shadow, a tighter sun shadow. `?quality=low`
+or `?quality=high` on the URL forces a tier; the HUD shows when it is on.
+For real old hardware use a device cloud (BrowserStack / LambdaTest have
+free open-source tiers); the headless engines here only prove the build
+boots.
 
 ## Architecture notes
 

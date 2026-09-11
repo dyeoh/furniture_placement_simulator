@@ -96,6 +96,15 @@ func setup(parent: Node3D, room_height: float) -> void:
 	apply()
 
 
+## Low spec: no shadow from the ceiling light (the one positional shadow),
+## a tighter, unblurred sun shadow.
+func set_low_spec(low: bool) -> void:
+	ceiling_light.shadow_enabled = not low
+	sun.shadow_blur = 0.0 if low else 1.5
+	sun.directional_shadow_max_distance = 12.0 if low else 25.0
+	RenderingServer.directional_shadow_atlas_set_size(2048 if low else 4096, true)
+
+
 func set_sun(key: String, value: float) -> void:
 	settings["sun"][key] = value
 	apply()

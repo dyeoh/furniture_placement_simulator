@@ -67,6 +67,19 @@ func run() -> void:
 		check("model inferred from a store title", FurnitureItem.from_dict({"id": "x", "name": "Strata Buffet"}, catalog.finishes).model == "modern_wooden_cabinet")
 		check("bed inferred, not bedside", FurnitureItem.from_dict({"id": "y", "name": "Naka Bed"}, catalog.finishes).shape_kind == "bed"
 			and FurnitureItem.from_dict({"id": "z", "name": "Lutra Bedside Table"}, catalog.finishes).shape_kind == "")
+		# Quality watchdog: slow frames after the grace period drop to low, once.
+		var q := Quality.new()
+		var drops := [0]   # an array, so the lambda's copy shares it
+		q.changed.connect(func(_l: bool): drops[0] += 1)
+		for i in 59:
+			q.watch(0.1)   # 10 fps through the grace period: must not trigger
+		check("no drop during grace", not q.low and drops[0] == 0)
+		for i in 100:
+			q.watch(0.05)  # 20 fps for 5 s
+		check("watchdog drops to low", q.low and drops[0] == 1, "drops %d" % drops[0])
+		for i in 100:
+			q.watch(0.05)
+		check("watchdog drops only once", drops[0] == 1)
 		var lamp := catalog.find("floor-lamp")
 		check("floor lamp fixture present", lamp != null and lamp.is_light() and lamp.variant_id == 0)
 
