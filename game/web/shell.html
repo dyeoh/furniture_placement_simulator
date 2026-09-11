@@ -145,6 +145,15 @@ body {
 			<div id="status-notice"></div>
 		</div>
 
+		<script>
+// coi-serviceworker gives the page cross-origin isolation (COOP/COEP) that
+// GitHub Pages cannot send as headers, by re-serving it through a service
+// worker (one reload on first visit). Only when this is the top-level page:
+// inside a store's iframe isolation is the parent's to grant, and a reload
+// here would achieve nothing.
+if (window.self !== window.top) { window.coi = { shouldRegister: () => false }; }
+		</script>
+		<script src="coi-serviceworker.js"></script>
 		<script src="$GODOT_URL"></script>
 		<script>
 const GODOT_CONFIG = $GODOT_CONFIG;

@@ -140,6 +140,32 @@ func run() -> void:
 	check("carry label", tc._grab.text == "Put down")
 	tc.set_carrying(false)
 	check("carry label back", tc._grab.text == "Pick up")
+	tc.queue_free()
+	leak_counter.queue_free()
+	await process_frame
+
+	# --- pinch zoom in the planner view, through the real scene
+	var scene: Node3D = load("res://scenes/showroom.tscn").instantiate()
+	get_root().add_child(scene)
+	for i in 5:
+		await process_frame
+	var before: float = scene._dist
+	var a := Vector2(vp.x * 0.6, vp.y * 0.5)
+	var b := Vector2(vp.x * 0.7, vp.y * 0.5)
+	await touch(0, true, a)
+	await touch(1, true, b)
+	await drag(0, a, a - Vector2(80, 0))
+	await drag(1, b, b + Vector2(80, 0))
+	check("spreading fingers zooms in", scene._dist < before, "%.2f -> %.2f" % [before, scene._dist])
+	var mid: float = scene._dist
+	await drag(0, a - Vector2(80, 0), a)
+	await drag(1, b + Vector2(80, 0), b)
+	check("pinching fingers zooms out", scene._dist > mid, "%.2f -> %.2f" % [mid, scene._dist])
+	await touch(1, false, b)
+	await drag(0, a, a + Vector2(50, 0))
+	check("one finger left does not zoom", is_equal_approx(scene._dist, before), "%.2f" % scene._dist)
+	await touch(0, false, a + Vector2(50, 0))
+	scene.queue_free()
 
 	print("")
 	if _fails.is_empty():

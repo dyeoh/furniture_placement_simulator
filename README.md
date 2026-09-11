@@ -51,9 +51,9 @@ so in the HUD.
 wheel zoom · **Walk:** click to look, `WASD`, `E` carry/drop, `[` `]` shove
 force · `B` swap physics backend (the layout survives the swap).
 
-On a touchscreen Walk swaps the keyboard for on-screen controls (a floating
-stick, a look pad, a carry button) and hides the side panel until you leave
-Walk. To try them with a mouse: `godot --path game -- --touch` locally, or
+On a touchscreen the planner views orbit with one finger and zoom with a
+pinch; Walk swaps the keyboard for on-screen controls (a floating stick, a
+look pad, a carry button) and hides the side panel until you leave Walk. To try them with a mouse: `godot --path game -- --touch` locally, or
 `?touch=1` on the web build.
 
 ## Tests
@@ -77,6 +77,17 @@ The web build is single-threaded on purpose: a Shopify storefront cannot send
 the COOP/COEP headers a threaded (SharedArrayBuffer) build needs, so a
 threaded module would fail to link inside the store. It uses the
 Compatibility renderer, the only one that runs on the web.
+
+**Cross-origin isolation:** the page loads
+[`coi-serviceworker.js`](https://github.com/gzuidhof/coi-serviceworker)
+(`game/web/`, MIT), which re-serves the page through a service worker with
+the COOP/COEP headers GitHub Pages cannot send, so the standalone Pages build
+is cross-origin isolated (`window.crossOriginIsolated === true` after one
+reload on first visit). That is what a threaded build would need on Pages.
+It is deliberately *not* registered when the sim runs inside a store's
+`<iframe>` (`window.self !== window.top` in `game/web/shell.html`): isolation
+is granted by the top-level page, so a worker in the frame could only cause a
+pointless reload. The shipped build stays single-threaded for that reason.
 
 **Deploy:** `.github/workflows/deploy-web.yml` builds the no-threads wasm
 extension from the submodule, exports the project and publishes it to GitHub

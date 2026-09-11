@@ -125,6 +125,9 @@ jobs:
           GODOT=~/godot-bin/"Godot_v${GODOT_VERSION}_linux.x86_64"
           mkdir -p web
           "$GODOT" --headless --path game --export-release "Web" ../web/index.html
+          # Not a Godot resource, so the export does not carry it; the shell
+          # loads it from next to index.html.
+          cp game/web/coi-serviceworker.js web/
 
       # An export "succeeds" even when the extension is missing, and the failure
       # only shows up as a broken page, so check the artifacts are really there.
@@ -132,7 +135,7 @@ jobs:
         run: |
           cd web
           ls -la
-          for f in index.html index.js index.wasm index.pck; do
+          for f in index.html index.js index.wasm index.pck coi-serviceworker.js; do
             test -s "$f" || { echo "missing or empty: $f"; exit 1; }
           done
           ls libbox3d_godot.web.*.nothreads.wasm >/dev/null 2>&1 \

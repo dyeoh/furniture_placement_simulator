@@ -53,6 +53,10 @@ var _press_drag := false
 var _last_pointer := Vector2.ZERO
 var _selected: PlacedItem
 var _pending_layout: Dictionary = {}
+## Fingers currently down (index -> position) and the span between the
+## first two, for pinch zoom. The web build synthesises no magnify gesture.
+var _fingers: Dictionary = {}
+var _pinch_span := 0.0
 
 
 func _ready() -> void:
@@ -293,6 +297,8 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
 		_key(event as InputEventKey)
 		return
+	if _tool != CatalogPanel.Tool.WALK and _pinch(event):
+		return
 	match _tool:
 		CatalogPanel.Tool.PLACE:
 			_input_place(event)
@@ -334,6 +340,38 @@ func _key(k: InputEventKey) -> void:
 		KEY_E:
 			if _tool == CatalogPanel.Tool.WALK:
 				shopper.interact()
+
+
+## Two fingers zoom the planner view; one finger keeps orbiting through the
+## mouse events Godot emulates from it. Returns true when the event was a
+## pinch step and the tool should not see it.
+func _pinch(event: InputEvent) -> bool:
+	if event is InputEventScreenTouch:
+		var t := event as InputEventScreenTouch
+		if t.pressed:
+			_fingers[t.index] = t.position
+		else:
+			_fingers.erase(t.index)
+		if _fingers.size() == 2:
+			_pinch_span = _finger_span()
+			_orbiting = false
+		return false
+	if event is InputEventScreenDrag:
+		var d := event as InputEventScreenDrag
+		if _fingers.has(d.index):
+			_fingers[d.index] = d.position
+		if _fingers.size() == 2:
+			var span := _finger_span()
+			if _pinch_span > 1.0 and span > 1.0:
+				_dist = clampf(_dist * _pinch_span / span, 2.5, 20.0)
+			_pinch_span = span
+			return true
+	return false
+
+
+func _finger_span() -> float:
+	var pts := _fingers.values()
+	return (pts[0] as Vector2).distance_to(pts[1] as Vector2)
 
 
 func _pointer_ray(screen: Vector2) -> Array:
