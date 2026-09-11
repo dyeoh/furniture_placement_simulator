@@ -11,5 +11,5 @@ game/bin/*.so
 game/bin/*.wasm
 
 # Web export output; CI publishes it, nobody commits it.
-web/
+/web/
 shots/
