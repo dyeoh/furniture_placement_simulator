@@ -145,6 +145,26 @@ jobs:
             || { echo "$wasm is not a valid wasm module"; exit 1; }
           echo "extension present: $wasm ($(stat -c%s "$wasm") bytes)"
 
+      # Boot the export in Chromium, WebKit (Safari's engine) and Firefox, plus
+      # a phone profile in low-spec mode, before it can deploy. Catches a build
+      # that only breaks in one engine, which the Godot tests above cannot.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: tests/web/package-lock.json
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('tests/web/package-lock.json') }}
+      - name: Browser smoke test
+        run: |
+          cd tests/web
+          npm ci
+          npx playwright install --with-deps chromium webkit firefox
+          node smoke.mjs ../../web
+
       # Pages must already be enabled on the repo with source "GitHub Actions"
       # (Settings > Pages). Letting this action enable it needs admin rights the
       # workflow token does not have here, and fails the whole run.
