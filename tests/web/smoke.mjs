@@ -53,6 +53,10 @@ async function run(base, c) {
   const errors = [];
   page.on('console', (msg) => { if (msg.type() === 'error') errors.push(msg.text()); });
   page.on('pageerror', (err) => errors.push(`pageerror: ${err.message}`));
+  // coi-serviceworker reloads the page once it has registered, aborting the
+  // first load's fetches (WebKit reports that as "Load failed"). Only the
+  // load that actually boots the sim is judged.
+  page.on('framenavigated', (frame) => { if (frame === page.mainFrame()) errors.length = 0; });
   // The sim posts to window.parent; at top level that is the page itself.
   await page.addInitScript(() => {
     window.__sim = { ready: false, quality: null };
