@@ -47,8 +47,10 @@ static func restore(data: Dictionary, placer: Placer, room: RoomBuilder, lightin
 		p.yaw = int(d.get("yaw", 0)) % 4
 		p.finish = str(d.get("finish", item.finish))
 		placer.set_finish(p, p.finish)
-		# Bypass snapping: the stored position is already exact.
-		p.position = Vector3(float(d.get("x", 0.0)), 0.0, float(d.get("z", 0.0)))
+		# Bypass snapping: the stored position is already exact -- but keep
+		# it inside the walls, since the room may have shrunk since the
+		# capture; anything that then overlaps is flagged, not lost.
+		p.position = placer._clamp_to_room(p, Vector3(float(d.get("x", 0.0)), 0.0, float(d.get("z", 0.0))))
 		p.valid = placer.validate(p)
 		if d.get("light") is Dictionary and item.is_light():
 			var l: Dictionary = d["light"]

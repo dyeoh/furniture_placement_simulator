@@ -37,6 +37,8 @@ var materials: Dictionary = {}
 ## Visual only (no body, nothing to paint): shown with the cutaway off, i.e.
 ## in the walkthrough, so there is something overhead.
 var ceiling: MeshInstance3D
+## Walls the cutaway is currently hiding -- the ones between camera and room.
+var hidden_walls: Array[String] = []
 
 var default_wall_color := Color(0.93, 0.91, 0.86)
 ## The laminate's own colour, so the untouched floor is the photograph.
@@ -182,6 +184,7 @@ func paint_color(surface: String) -> Color:
 func update_cutaway(camera_forward: Vector3, enabled: bool) -> void:
 	if ceiling != null:
 		ceiling.visible = not enabled
+	hidden_walls.clear()
 	for b in boxes:
 		if b["surface"] == "floor":
 			continue
@@ -190,6 +193,8 @@ func update_cutaway(camera_forward: Vector3, enabled: bool) -> void:
 			continue
 		var inward: Vector3 = b["inward"]
 		mi.visible = (not enabled) or inward.dot(camera_forward) < 0.05
+		if not mi.visible:
+			hidden_walls.append(b["surface"])
 
 
 ## Which surface does a ray hit first? Game-side, since the backends return

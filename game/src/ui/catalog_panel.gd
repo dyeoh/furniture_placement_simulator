@@ -23,6 +23,7 @@ signal export_pressed
 signal light_changed(group: String, key: String, value: Variant)
 signal lamp_changed(key: String, value: Variant)
 signal add_lamp_pressed
+signal room_size_changed(width: float, depth: float)
 
 enum Tool { PLACE, PAINT, WALK, LIGHT }
 const TOOL_NAMES := ["Place", "Paint", "Walk", "Light"]
@@ -47,6 +48,8 @@ var _catalog_box: VBoxContainer
 ## Sliders/toggles by "group/key", so a restored layout can move them.
 var _light_controls: Dictionary = {}
 var _syncing := false
+var _room_w: SpinBox
+var _room_d: SpinBox
 
 
 func build(p_catalog: Catalog, on_web: bool) -> void:
@@ -78,6 +81,21 @@ func build(p_catalog: Catalog, on_web: bool) -> void:
 		tools.add_child(b)
 		_tool_buttons.append(b)
 	set_tool(Tool.PLACE)
+
+	# --- room size, in metres; the room rebuilds around whatever is placed
+	var size_row := HBoxContainer.new()
+	root.add_child(size_row)
+	var size_label := Label.new()
+	size_label.text = "Room"
+	size_row.add_child(size_label)
+	_room_w = _metres(size_row, 6.0)
+	var times := Label.new()
+	times.text = "×"
+	size_row.add_child(times)
+	_room_d = _metres(size_row, 5.0)
+	var unit := Label.new()
+	unit.text = "m"
+	size_row.add_child(unit)
 
 	# --- selected item (Place and Light tools): shared by furniture and lamps
 	_selected_box = VBoxContainer.new()
@@ -228,6 +246,28 @@ func build(p_catalog: Catalog, on_web: bool) -> void:
 	_cart_btn.custom_minimum_size = BTN_MIN
 	_cart_btn.pressed.connect(func(): (cart_pressed if on_web else export_pressed).emit())
 	root.add_child(_cart_btn)
+
+
+func _metres(parent: Control, value: float) -> SpinBox:
+	var sb := SpinBox.new()
+	sb.min_value = 2.0
+	sb.max_value = 12.0
+	sb.step = 0.1
+	sb.value = value
+	sb.custom_minimum_size = BTN_MIN
+	sb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sb.value_changed.connect(func(_v: float):
+		if not _syncing:
+			room_size_changed.emit(_room_w.value, _room_d.value))
+	parent.add_child(sb)
+	return sb
+
+
+func set_room_size(width: float, depth: float) -> void:
+	_syncing = true
+	_room_w.value = width
+	_room_d.value = depth
+	_syncing = false
 
 
 ## A labelled HSlider sized for thumbs. [param cb] gets the value on change,

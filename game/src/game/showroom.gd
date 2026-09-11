@@ -22,8 +22,7 @@ extends Node3D
 ## Everything physical goes through the PhysicsBackend seam; this file owns
 ## cameras, input and wiring only.
 
-const ROOM_W := 6.0
-const ROOM_D := 5.0
+const DEFAULT_ROOM := Vector2(6.0, 5.0)
 
 var backend: PhysicsBackend
 var room := RoomBuilder.new()
@@ -41,6 +40,7 @@ var _camera: Camera3D
 var _panel: CatalogPanel
 var _hud: Label
 var _touch: TouchControls
+var _dims: DimensionLines
 var _file_dialog: FileDialog
 
 var _tool := CatalogPanel.Tool.PLACE
@@ -57,6 +57,8 @@ var _pending_layout: Dictionary = {}
 
 func _ready() -> void:
 	catalog.load_default()
+	room.width = DEFAULT_ROOM.x
+	room.depth = DEFAULT_ROOM.y
 	_build_environment()
 	_build_ui()
 	bridge.catalog_received.connect(_on_host_catalog)
@@ -113,7 +115,9 @@ func _build_ui() -> void:
 	_panel.light_changed.connect(_on_light_changed)
 	_panel.lamp_changed.connect(_on_lamp_changed)
 	_panel.add_lamp_pressed.connect(func(): _spawn_item(catalog.find("floor-lamp")))
+	_panel.room_size_changed.connect(_on_room_size_changed)
 	_panel.set_lighting(lighting.to_dict())
+	_panel.set_room_size(room.width, room.depth)
 
 	var hud_panel := PanelContainer.new()
 	hud_panel.set_anchors_preset(Control.PRESET_TOP_RIGHT)
@@ -148,7 +152,9 @@ func _build_ui() -> void:
 
 func _start_backend() -> void:
 	if backend != null:
-		_pending_layout = Layout.capture(placer, room, lighting)
+		# A restore into a resized room arrives with the layout already set.
+		if _pending_layout.is_empty():
+			_pending_layout = Layout.capture(placer, room, lighting)
 		shopper.release()
 		placer.clear()
 		backend.shutdown()
@@ -165,15 +171,16 @@ func _start_backend() -> void:
 	backend.initialize(_world_root)
 	backend.set_gravity(Vector3(0, -9.8, 0))
 
-	room.width = ROOM_W
-	room.depth = ROOM_D
 	room.build(backend)
 	room.build_visuals(_visual_root)
+	_dims = DimensionLines.new()
+	_visual_root.add_child(_dims)
+	_dims.build(room)
 	placer.setup(backend, room, catalog, _visual_root)
 	painter.setup(room)
 	if not placer.changed.is_connected(_on_layout_changed):
 		placer.changed.connect(_on_layout_changed)
-	shopper.setup(backend, placer, Vector3(0, 0.0, ROOM_D * 0.5 - 1.0))
+	shopper.setup(backend, placer, Vector3(0, 0.0, room.depth * 0.5 - 1.0))
 	if not _pending_layout.is_empty():
 		_restore_layout(_pending_layout)
 		_pending_layout = {}
@@ -181,8 +188,27 @@ func _start_backend() -> void:
 
 
 func _restore_layout(data: Dictionary) -> void:
-	Layout.restore(data, placer, room, lighting)
+	# A different room size means new walls and bodies: go through the full
+	# rebuild, which restores the layout on the way out.
+	var r: Dictionary = data.get("room", {})
+	var w := float(r.get("width", room.width))
+	var d := float(r.get("depth", room.depth))
+	if not is_equal_approx(w, room.width) or not is_equal_approx(d, room.depth):
+		room.width = w
+		room.depth = d
+		_pending_layout = data
+		_start_backend()
+	else:
+		Layout.restore(data, placer, room, lighting)
 	_panel.set_lighting(lighting.to_dict())
+	_panel.set_room_size(room.width, room.depth)
+
+
+func _on_room_size_changed(width: float, depth: float) -> void:
+	room.width = width
+	room.depth = depth
+	_dist = clampf(maxf(width, depth) * 1.5, 2.5, 20.0)
+	_start_backend()
 
 #endregion
 
@@ -199,6 +225,8 @@ func _set_tool(tool: int) -> void:
 	if _touch != null:
 		_touch.visible = (tool == CatalogPanel.Tool.WALK)
 		_panel.visible = not _touch.visible
+	if _dims != null:
+		_dims.visible = (tool != CatalogPanel.Tool.WALK)
 	painter.clear_hover()
 	if tool != CatalogPanel.Tool.PLACE and placer.dragging != null:
 		placer.cancel()
@@ -475,6 +503,8 @@ func _update_camera() -> void:
 	# Slide the view right so the side panel does not sit over the room.
 	_camera.h_offset = -_dist * 0.11
 	room.update_cutaway(-_camera.global_basis.z, true)
+	if _dims != null:
+		_dims.update(room.hidden_walls)
 
 
 func _update_hud() -> void:

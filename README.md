@@ -20,7 +20,7 @@ replaces it with the live collection at runtime.
 
 | | |
 |---|---|
-| **Place** | Tap a catalogue item, drag it in, rotate in quarter turns, drop. Three live-switchable snap modes: free, 25 cm grid, wall magnet. Overlaps and out-of-room drops are refused (green/red ghost). A dropped piece is a rigid body until it falls asleep, then it is *placed*. |
+| **Place** | Tap a catalogue item, drag it in, rotate in quarter turns, drop. Three live-switchable snap modes: free, 25 cm grid, wall magnet. Overlaps and out-of-room drops are refused (green/red ghost). A dropped piece is a rigid body until it falls asleep, then it is *placed*. The room's width and depth are typed in metres and shown as dimension lines in the view; resizing rebuilds the room around what is placed and flags anything that no longer fits. |
 | **Paint** | Swatches (wall paints + the store's five timbers) or a colour picker; tap a wall or the floor. Painted plaster and laminate planks with real relief; the swatch is the colour you get. Walls between the camera and the room are cut away. |
 | **Light** | Swing the sun round the sky and warm it up, dim the ambient, switch on the ceiling light, add and remove floor lamps — each dimmable. Lighting is saved with the layout. |
 | **Walk** | First-person capsule mover. Walking into furniture shoves it (450 N, tunable live) — a side table skids, a bed does not. `E` carries a piece and drops it wherever you are. On a touchscreen: a stick on the left, drag to look on the right, a carry button. |

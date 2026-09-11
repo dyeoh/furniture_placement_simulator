@@ -197,6 +197,51 @@ func run() -> void:
 		check("restored items settle", (await settle(backend, placer)) >= 0)
 		placer.remove(restored_lamp)
 
+		# --- dimension lines follow the cutaway
+		var dims := DimensionLines.new()
+		stage.add_child(dims)
+		dims.build(room)
+		var labels: Array[String] = []
+		for l in dims.find_children("*", "Label3D", true, false):
+			labels.append((l as Label3D).text)
+		labels.sort()
+		check("dimension labels", labels == ["5.00 m", "6.00 m"], str(labels))
+		dims.update(["south", "east"])
+		check("lines on the camera side", dims._width_line.position.z > 2.5 and dims._depth_line.position.x > 3.0)
+		dims.update(["north", "west"])
+		check("lines flip with the cutaway", dims._width_line.position.z < -2.5 and dims._depth_line.position.x < -3.0)
+		dims.queue_free()
+
+		# --- restoring into a narrower room keeps every piece inside the walls.
+		# The walls' bodies are not rebuilt here: clamping and validation are
+		# arithmetic on the room's extents, which is what is under test.
+		var wide := Layout.capture(placer, room)
+		var far_x := 0.0
+		for p in placer.items:
+			far_x = maxf(far_x, absf(p.position.x))
+		check("something sits past x=1.0 in the 6 m room", far_x > 1.0, "%.2f" % far_x)
+		placer.clear()
+		room.width = 2.0
+		room.depth = 2.0
+		Layout.restore(wide, placer, room)
+		var inside := true
+		var flagged := 0
+		for p in placer.items:
+			inside = inside and room.contains_aabb(p.aabb(null))
+			if not p.valid:
+				flagged += 1
+		check("shrunk room: all inside", inside)
+		check("shrunk room: overlaps flagged", flagged > 0, "%d flagged" % flagged)
+		placer.clear()
+		room.width = 6.0
+		room.depth = 5.0
+		Layout.restore(wide, placer, room)
+		var clean := true
+		for p in placer.items:
+			clean = clean and p.valid
+		check("back at 6 m: all valid", clean)
+		await settle(backend, placer)
+
 		# --- walkthrough carry & drop
 		var shopper := Shopper.new()
 		shopper.setup(backend, placer, Vector3(0, 0, 2.0))
