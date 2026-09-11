@@ -141,9 +141,10 @@ jobs:
             || { echo "$wasm is not a valid wasm module"; exit 1; }
           echo "extension present: $wasm ($(stat -c%s "$wasm") bytes)"
 
+      # Pages must already be enabled on the repo with source "GitHub Actions"
+      # (Settings > Pages). Letting this action enable it needs admin rights the
+      # workflow token does not have here, and fails the whole run.
       - uses: actions/configure-pages@v5
-        with:
-          enablement: true
       - uses: actions/upload-pages-artifact@v3
         with:
           path: web
