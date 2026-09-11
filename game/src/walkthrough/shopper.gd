@@ -19,6 +19,8 @@ const GRAVITY := 9.8
 const GROUND_DOT := 0.6428   # cos 50 degrees
 const REACH := 1.4
 const CARRY_DISTANCE := 0.9
+## How close a carried piece is pulled in when something is in the way.
+const CARRY_MIN := 0.25
 const CARRY_HEIGHT := 0.6
 
 ## Steady push, in newtons, applied while walking into a piece. Mass does the
@@ -107,8 +109,25 @@ func step(intent: Vector3, dt: float) -> void:
 
 	_shove(wish, dt)
 	if carrying != null:
-		var at := feet() + forward() * (CARRY_DISTANCE + carrying.rotated_size().z * 0.5)
-		placer.carry_to(carrying, at, int(round(yaw / (PI * 0.5))), CARRY_HEIGHT)
+		_hold()
+
+
+## Keep the carried piece in front of the shopper but inside the room and
+## out of other furniture: it stops at a wall and slides along it, and is
+## pulled in closer when it would pass through something. A piece never
+## clips a wall, which is what sells the walkthrough.
+func _hold() -> void:
+	var quarter := int(round(yaw / (PI * 0.5)))
+	carrying.yaw = posmod(quarter, 4)
+	var half := carrying.rotated_size().z * 0.5
+	var d := CARRY_DISTANCE
+	var at := Vector3.ZERO
+	while true:
+		at = placer.clamp_to_room(carrying, feet() + forward() * (d + half))
+		if d <= CARRY_MIN or not placer.blocked_at(carrying, at, CARRY_HEIGHT):
+			break
+		d -= 0.1
+	placer.carry_to(carrying, at, quarter, CARRY_HEIGHT)
 
 
 ## Push any piece the capsule is pressed against, in the direction of travel.

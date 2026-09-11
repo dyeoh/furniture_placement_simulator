@@ -98,7 +98,7 @@ func drag_to(floor_point: Vector3) -> void:
 			p.z = snappedf(p.z, GRID)
 		Snap.WALL:
 			p = _wall_magnet(dragging, p)
-	dragging.position = _clamp_to_room(dragging, p)
+	dragging.position = clamp_to_room(dragging, p)
 	dragging.valid = validate(dragging)
 	dragging.sync_visual(null)
 	dragging.set_tint(true, dragging.valid)
@@ -161,6 +161,19 @@ func carry(p: PlacedItem) -> bool:
 	return true
 
 
+## Would [param p], held at [param lift] above [param pos], pass through
+## another piece? Ghosts and other carried items do not count.
+func blocked_at(p: PlacedItem, pos: Vector3, lift: float) -> bool:
+	var rs := p.rotated_size()
+	var box := AABB(Vector3(pos.x - rs.x * 0.5, lift, pos.z - rs.z * 0.5), rs).grow(-0.01)
+	for o in items:
+		if o == p or o.state == PlacedItem.State.GHOST or o.state == PlacedItem.State.CARRIED:
+			continue
+		if box.intersects(o.aabb(backend if o.body >= 0 else null)):
+			return true
+	return false
+
+
 func carry_to(p: PlacedItem, floor_point: Vector3, yaw: int, height: float) -> void:
 	p.position = Vector3(floor_point.x, 0.0, floor_point.z)
 	p.yaw = posmod(yaw, 4)
@@ -172,7 +185,7 @@ func carry_to(p: PlacedItem, floor_point: Vector3, yaw: int, height: float) -> v
 func drop_carried(p: PlacedItem) -> void:
 	if p == null or p.state != PlacedItem.State.CARRIED:
 		return
-	p.position = _clamp_to_room(p, p.position)
+	p.position = clamp_to_room(p, p.position)
 	_commit(p)
 	changed.emit()
 
@@ -284,7 +297,7 @@ func validate(p: PlacedItem) -> bool:
 	return true
 
 
-func _clamp_to_room(p: PlacedItem, pos: Vector3) -> Vector3:
+func clamp_to_room(p: PlacedItem, pos: Vector3) -> Vector3:
 	var h := room.half_extents()
 	var rs := p.rotated_size()
 	pos.x = clampf(pos.x, -h.x + rs.x * 0.5, h.x - rs.x * 0.5)

@@ -271,6 +271,18 @@ func run() -> void:
 			placer.update(1.0 / 60.0)
 			await process_frame
 		check("carried item lifted", target.lift_y > 0.3 and target.body < 0)
+		# Walk at the nearest wall with it: it must stay inside the room.
+		shopper.yaw = 0.0   # facing -Z, the north wall
+		var clipped := false
+		for i in 240:
+			shopper.step(Vector3(0, 0, -1), 1.0 / 60.0)
+			backend.step(1.0 / 60.0)
+			placer.update(1.0 / 60.0)
+			await process_frame
+			if not room.contains_aabb(target.aabb(null)):
+				clipped = true
+		check("carried item never clips the wall", not clipped, str(target.position))
+		check("shopper reached the wall", shopper.feet().z < -1.5, "z=%.2f" % shopper.feet().z)
 		shopper.interact()
 		check("dropped", shopper.carrying == null and target.state == PlacedItem.State.SETTLING and target.body >= 0)
 		check("dropped item settles", (await settle(backend, placer)) >= 0)
