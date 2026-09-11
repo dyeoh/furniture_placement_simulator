@@ -106,7 +106,9 @@ func _build_ui() -> void:
 		var p := placer.dragging if placer.dragging != null else _selected
 		if p != null:
 			placer.set_finish(p, key))
-	_panel.swatch_chosen.connect(func(c): painter.color = c)
+	_panel.swatch_chosen.connect(func(c):
+		painter.color = c
+		_panel.set_paint_color(c))
 	_panel.paint_all_pressed.connect(func(): painter.apply_all_walls())
 	_panel.upload_pressed.connect(_on_upload)
 	_panel.clear_pressed.connect(func(): placer.clear())

@@ -45,6 +45,9 @@ var _walk_box: VBoxContainer
 var _light_box: VBoxContainer
 var _lamp_box: VBoxContainer
 var _picker: ColorPickerButton
+## Swatch buttons by colour, so the chosen one can be marked.
+var _swatches: Dictionary = {}
+var _paint_label: Label
 var _cart_btn: Button
 var _catalog_box: VBoxContainer
 ## Sliders/toggles by "group/key", so a restored layout can move them.
@@ -178,28 +181,29 @@ func build(p_catalog: Catalog, on_web: bool) -> void:
 	var grid := GridContainer.new()
 	grid.columns = 6
 	_paint_box.add_child(grid)
+	_swatches.clear()
 	for sw in Painter.SWATCHES:
 		var b := Button.new()
 		b.custom_minimum_size = Vector2(34, 34)
 		b.tooltip_text = sw[0]
-		var sb := StyleBoxFlat.new()
-		sb.bg_color = Color(sw[1])
-		sb.corner_radius_top_left = 4
-		sb.corner_radius_top_right = 4
-		sb.corner_radius_bottom_left = 4
-		sb.corner_radius_bottom_right = 4
-		b.add_theme_stylebox_override("normal", sb)
-		b.add_theme_stylebox_override("hover", sb)
-		b.add_theme_stylebox_override("pressed", sb)
+		b.add_theme_font_size_override("font_size", 18)
 		var col := Color(sw[1])
+		b.add_theme_stylebox_override("normal", _swatch_style(col, false))
+		b.add_theme_stylebox_override("hover", _swatch_style(col, false))
+		b.add_theme_stylebox_override("pressed", _swatch_style(col, false))
 		b.pressed.connect(func(): swatch_chosen.emit(col))
 		grid.add_child(b)
+		_swatches[col.to_html(false)] = b
+	_paint_label = Label.new()
+	_paint_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_paint_box.add_child(_paint_label)
 	_picker = ColorPickerButton.new()
 	_picker.text = "Custom colour"
 	_picker.custom_minimum_size = BTN_MIN
 	_picker.color = Color("#b7c4a8")
 	_picker.color_changed.connect(func(c: Color): swatch_chosen.emit(c))
 	_paint_box.add_child(_picker)
+	set_paint_color(_picker.color)
 	var pall := Button.new()
 	pall.text = "Paint all walls"
 	pall.custom_minimum_size = BTN_MIN
@@ -330,6 +334,39 @@ func _set_control(key: String, value: Variant) -> void:
 		(c as HSlider).value = float(value)
 	elif c is CheckButton:
 		(c as CheckButton).button_pressed = bool(value)
+
+
+func _swatch_style(color: Color, selected: bool) -> StyleBoxFlat:
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = color
+	sb.set_corner_radius_all(4)
+	if selected:
+		# Ring that reads on any swatch: white on dark paints, dark on light.
+		sb.set_border_width_all(3)
+		sb.border_color = Color.WHITE if color.get_luminance() < 0.5 else Color(0.15, 0.15, 0.15)
+	return sb
+
+
+## Mark the swatch in use -- ring plus tick -- and name it under the grid.
+## A custom colour marks no swatch and shows as its hex.
+func set_paint_color(color: Color) -> void:
+	var key := color.to_html(false)
+	var name := "#" + key
+	for k in _swatches:
+		var b: Button = _swatches[k]
+		var on: bool = (str(k) == key)
+		var col := Color("#" + str(k))
+		b.text = "✓" if on else ""
+		b.add_theme_color_override("font_color", Color.WHITE if col.get_luminance() < 0.5 else Color(0.15, 0.15, 0.15))
+		for state in ["normal", "hover", "pressed"]:
+			b.add_theme_stylebox_override(state, _swatch_style(col, on))
+		if on:
+			name = b.tooltip_text
+	_paint_label.text = "Selected: " + name
+	_picker.color = color
+	var ink := Color.WHITE if color.get_luminance() < 0.5 else Color(0.15, 0.15, 0.15)
+	for state in ["font_color", "font_hover_color", "font_pressed_color", "font_focus_color"]:
+		_picker.add_theme_color_override(state, ink)
 
 
 func refresh_items() -> void:
