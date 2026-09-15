@@ -234,7 +234,7 @@ func build(p_catalog: Catalog, on_web: bool) -> void:
 	add_lamp.pressed.connect(func(): add_lamp_pressed.emit())
 	_light_box.add_child(add_lamp)
 	var lamp_hint := Label.new()
-	lamp_hint.text = "Tap a lamp to dim it or remove it."
+	lamp_hint.text = "Tap a lamp to dim it or remove it; drag it to move it."
 	lamp_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_light_box.add_child(lamp_hint)
 	_light_box.visible = false

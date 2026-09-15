@@ -397,9 +397,14 @@ func _input_place(event: InputEvent) -> void:
 			if mb.pressed:
 				_last_pointer = mb.position
 				if placer.dragging != null:
-					# Sticky drag from the catalogue: a click is the drop.
-					if placer.drop():
-						_select(null)
+					# Sticky drag from the catalogue: the press lands it under
+					# the pointer (a finger gives no motion beforehand, so it
+					# would otherwise drop where it spawned) and the release
+					# drops it. A tap drops here; tap-and-drag carries it on.
+					var hit = Placer.floor_hit(ray[0], ray[1])
+					if hit != null:
+						placer.drag_to(hit)
+					_press_drag = true
 				else:
 					var hit := placer.pick(ray[0], ray[1])
 					if hit != null and hit.state != PlacedItem.State.CARRIED:
@@ -461,11 +466,16 @@ func _input_paint(event: InputEvent) -> void:
 			painter.set_hover(room.pick_surface(ray[0], ray[1]))
 
 
-## Light tool: a lamp being dragged in behaves as in Place; otherwise a tap
-## selects a lamp to dim, and the view orbits like everywhere else.
+## Light tool: a lamp being dragged behaves as in Place; a press on a placed
+## lamp lifts it (drag to move, release to drop -- so a plain tap puts it
+## straight back and selects it to dim); the view orbits like everywhere else.
 func _input_light(event: InputEvent) -> void:
 	if placer.dragging != null:
+		var p := placer.dragging
 		_input_place(event)
+		# A dropped lamp stays selected: dimming it is what this tool is for.
+		if placer.dragging == null and p in placer.items:
+			_select(p)
 		return
 	if event is InputEventMouseButton:
 		var mb := event as InputEventMouseButton
@@ -479,7 +489,9 @@ func _input_light(event: InputEvent) -> void:
 			if mb.pressed:
 				var ray := _pointer_ray(mb.position)
 				var hit := placer.pick(ray[0], ray[1])
-				if hit != null and hit.item.is_light():
+				if hit != null and hit.item.is_light() and hit.state != PlacedItem.State.CARRIED:
+					placer.lift(hit)
+					_press_drag = true
 					_select(hit)
 				else:
 					_select(null)
@@ -580,7 +592,7 @@ func _update_hud() -> void:
 			if shopper.carrying != null:
 				lines.append("Carrying %s" % shopper.carrying.item.name)
 		CatalogPanel.Tool.LIGHT:
-			lines.append("LIGHT — sliders for the sun and ceiling light; tap a lamp to dim it")
+			lines.append("LIGHT — sliders for the sun and ceiling light; tap a lamp to dim it, drag to move it")
 			if placer.dragging != null:
 				lines.append("Placing %s — tap to drop" % placer.dragging.item.name)
 	var placed := 0

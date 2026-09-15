@@ -174,6 +174,30 @@ func run() -> void:
 	await drag(0, a, a + Vector2(50, 0))
 	check("one finger left does not zoom", is_equal_approx(scene._dist, before), "%.2f" % scene._dist)
 	await touch(0, false, a + Vector2(50, 0))
+
+	# --- a floor lamp added on a phone: the first tap must land it under the
+	# finger (no hover motion precedes a touch), and a press-drag in the
+	# Light tool must move it, leaving it selected to dim.
+	scene._set_tool(CatalogPanel.Tool.LIGHT)
+	scene._spawn_item(scene.catalog.find("floor-lamp"))
+	var lamp: PlacedItem = scene.placer.dragging
+	check("lamp is being placed", lamp != null)
+	var target := Vector3(1.5, 0, 1.0)   # on the snap grid
+	var at: Vector2 = scene._camera.unproject_position(target)
+	await touch(0, true, at)
+	check("tap lands the lamp under the finger", lamp.position.distance_to(target) < 0.05, str(lamp.position))
+	await touch(0, false, at)
+	check("release drops the lamp", scene.placer.dragging == null and lamp.state != PlacedItem.State.GHOST)
+	check("dropped lamp stays selected", scene._selected == lamp)
+	var target2 := Vector3(-1.5, 0, -1.0)
+	var at2: Vector2 = scene._camera.unproject_position(target2)
+	await touch(0, true, at)
+	check("press on the lamp lifts it", scene.placer.dragging == lamp)
+	await drag(0, at, at2)
+	check("drag moves the lamp", lamp.position.distance_to(target2) < 0.05, str(lamp.position))
+	await touch(0, false, at2)
+	check("release drops it there", scene.placer.dragging == null and lamp.position.distance_to(target2) < 0.05)
+	check("moved lamp stays selected", scene._selected == lamp)
 	scene.queue_free()
 
 	print("")
