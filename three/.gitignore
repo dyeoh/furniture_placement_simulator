@@ -1,0 +1,6 @@
+node_modules/
+dist/
+# Built by native/box3d/build.sh (needs emsdk); CI builds it too.
+src/physics/box3d/box3d.js
+src/physics/box3d/box3d.wasm
+native/box3d/build/

@@ -1,0 +1,16 @@
+{
+  "type": "layout",
+  "version": 1,
+  "room": { "width": 6, "depth": 5, "height": 2.7, "ceiling": false,
+    "openings": [{ "id": "window", "wall": "west", "offset": -1.2 }] },
+  "items": [
+    { "id": "segu-shelf", "x": -0.5, "z": -2.35, "yaw": 0, "finish": "american_oak" },
+    { "id": "hikari-drinks-cabinet", "x": 1.75, "z": -2.265, "yaw": 0, "finish": "japanese_black" },
+    { "id": "naka-bed", "x": -2.075, "z": -0.25, "yaw": 1, "finish": "american_oak" },
+    { "id": "lutra-bedside-table", "x": -2.79, "z": -1.75, "yaw": 1, "finish": "blackwood" },
+    { "id": "moto-coffee-table", "x": 0.5, "z": 0.75, "yaw": 0, "finish": "american_oak" },
+    { "id": "logos-tv-unit", "x": 2.775, "z": 0.5, "yaw": 3, "finish": "blackwood" },
+    { "id": "se-side-table", "x": 1.0, "z": 2.0, "yaw": 0, "finish": "japanese_black" }
+  ],
+  "paint": { "north": "#7f9a7a" }
+}

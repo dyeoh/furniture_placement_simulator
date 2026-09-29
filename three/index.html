@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0">
+    <title>Room Planner (three.js)</title>
+    <script>
+// Bench probe (tests/web/bench): remember every WebAssembly.Memory this page
+// creates or instantiates with, so the bench page can report wasm memory for
+// both builds the same way. Costs nothing: a Set and two wrapped functions.
+(function () {
+  var mems = window.__wasmMemories = new Set();
+  function note(result, imports) {
+    try {
+      var inst = result && (result.instance || result);
+      var ex = inst && inst.exports;
+      if (ex) for (var k in ex) if (ex[k] instanceof WebAssembly.Memory) mems.add(ex[k]);
+      if (imports) for (var m in imports) for (var n in imports[m]) if (imports[m][n] instanceof WebAssembly.Memory) mems.add(imports[m][n]);
+    } catch (e) { /* never break the boot over a probe */ }
+    return result;
+  }
+  var inst = WebAssembly.instantiate, stream = WebAssembly.instantiateStreaming;
+  WebAssembly.instantiate = function (src, imports) { return inst.apply(this, arguments).then(function (r) { return note(r, imports); }); };
+  if (stream) WebAssembly.instantiateStreaming = function (src, imports) { return stream.apply(this, arguments).then(function (r) { return note(r, imports); }); };
+  window.__wasmMemoryBytes = function () { var t = 0; mems.forEach(function (m) { t += m.buffer.byteLength; }); return t; };
+})();
+    </script>
+  </head>
+  <body>
+    <div id="app"></div>
+    <!-- Same loader as the Godot shell (game/web/shell.html), so the two builds boot alike. -->
+    <div id="status">
+      <svg width="72" height="72" viewBox="0 0 72 72" fill="none" aria-hidden="true">
+        <path d="M8 44 L36 58 L64 44 L36 30 Z" fill="#c9b99c"/>
+        <path d="M8 44 L8 16 L36 2 L36 30 Z" fill="#b7c4a8"/>
+        <path d="M36 30 L36 2 L64 16 L64 44 Z" fill="#e3d9c6"/>
+        <path d="M8 44 L8 41 L36 27 L36 30 Z" fill="#f6f1e7"/>
+        <path d="M36 30 L36 27 L64 41 L64 44 Z" fill="#f6f1e7"/>
+        <path d="M40 40 L40 30 L54 37 L54 47 Z" fill="#6b4a2f"/>
+        <path d="M28 46 L28 36 L40 30 L40 40 Z" fill="#a0714a"/>
+        <path d="M28 36 L40 30 L54 37 L42 43 Z" fill="#d2b48c"/>
+      </svg>
+      <p id="status-title">Room Planner</p>
+      <p id="status-sub">Drop in furniture, paint the walls, walk through it.</p>
+      <div id="status-bar"><div id="status-fill"></div></div>
+      <p id="status-detail">Loading…</p>
+      <div id="status-notice"></div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
