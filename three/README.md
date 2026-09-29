@@ -57,7 +57,12 @@ The Box3D wasm is a build output (gitignored), built the same way CI builds
 the Godot extension: Emscripten 4.0.11, `-msimd128 -msse2`, no threads.
 
 URL flags: `?physics=box3d|rapier`, `?renderer=webgpu`, `?quality=low|high`,
-`?touch=1`, `?host=<origin>`.
+`?touch=1`, `?host=<origin>`, `?ui=0` (no panel/HUD, for look comparisons).
+
+**Browser floor:** Safari / iOS 16.4, Chrome 91, Firefox 89. Box3D is built
+with WebAssembly SIMD, and three.js itself ships class static blocks; both
+arrived in Safari 16.4. An inline check in `index.html` shows a notice below
+that, since the module bundle would fail to parse there and say nothing.
 
 ## Benchmark
 

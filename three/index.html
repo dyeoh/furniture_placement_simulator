@@ -46,6 +46,28 @@
       <p id="status-detail">Loading…</p>
       <div id="status-notice"></div>
     </div>
+    <script>
+// Box3D is compiled with WebAssembly SIMD, and three.js ships class static
+// blocks; both need Safari / iOS 16.4 or later. A classic script, so it still
+// runs where the module bundle below fails to parse and would say nothing.
+// The probe is the smallest SIMD module (wasm-feature-detect's).
+(function () {
+  var simd = false;
+  try {
+    simd = WebAssembly.validate(new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0, 1, 5, 1, 96, 0, 1, 123,
+      3, 2, 1, 0, 10, 10, 1, 8, 0, 65, 0, 253, 15, 253, 98, 11]));
+  } catch (e) { /* no WebAssembly at all */ }
+  if (simd) return;
+  window.__unsupported = 'This browser is too old for the room planner: it needs WebAssembly SIMD\n'
+    + '(Safari / iOS 16.4 or later, Chrome 91+, Firefox 89+).';
+  var n = document.getElementById('status-notice');
+  n.textContent = window.__unsupported;
+  n.style.cssText = 'display:block;white-space:pre-line;background:#f4dedb;border:1px solid #b3624a;color:#5b2e22;'
+    + 'border-radius:8px;padding:1rem;margin:0 2rem;max-width:32rem;text-align:center;font-family:sans-serif';
+  document.getElementById('status-bar').style.display = 'none';
+  document.getElementById('status-detail').textContent = '';
+})();
+    </script>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

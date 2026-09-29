@@ -34,8 +34,10 @@ const DEVICES = {
     'bstack:options': { deviceName: 'Samsung Galaxy M32', osVersion: '11.0', realMobile: 'true' } } },
   pixel7: { label: 'Google Pixel 7 · Android 13 · Chrome', caps: { browserName: 'chrome',
     'bstack:options': { deviceName: 'Google Pixel 7', osVersion: '13.0', realMobile: 'true' } } },
-  iphone13: { label: 'iPhone 13 · iOS 15 · Safari', caps: { browserName: 'safari',
-    'bstack:options': { deviceName: 'iPhone 13', osVersion: '15', realMobile: 'true' } } },
+  // The older iPhone: an A14 on iOS 17. Both builds need WebAssembly SIMD
+  // (iOS 16.4+), so the iOS 15 devices BrowserStack offers cannot run them.
+  iphone12: { label: 'iPhone 12 · iOS 17 · Safari', caps: { browserName: 'safari',
+    'bstack:options': { deviceName: 'iPhone 12', osVersion: '17', realMobile: 'true' } } },
   iphone16: { label: 'iPhone 16 · iOS 18 · Safari', caps: { browserName: 'safari',
     'bstack:options': { deviceName: 'iPhone 16', osVersion: '18', realMobile: 'true' } } },
   win11: { label: 'Windows 11 · Chrome latest', caps: { browserName: 'Chrome', browserVersion: 'latest',
@@ -90,7 +92,8 @@ async function runDevice(id, cred, build, outDir) {
       if (Date.now() - t0 > TIMEOUT_MS) throw new Error('timed out');
       await new Promise((r) => setTimeout(r, 10_000));
     }
-    const bench = await driver.executeScript('return window.__bench;');
+    // As a JSON string: Safari's WebDriver refuses to transfer the object itself.
+    const bench = JSON.parse(await driver.executeScript('return JSON.stringify(window.__bench);'));
     fs.writeFileSync(path.join(outDir, `${id}.json`), JSON.stringify({ device: d.label, ...bench }, null, 2));
     const ok = !bench.error && bench.results?.length === 2;
     await driver.executeScript(`browserstack_executor: ${JSON.stringify({ action: 'setSessionStatus',

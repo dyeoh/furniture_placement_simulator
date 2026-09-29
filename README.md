@@ -126,10 +126,13 @@ per finish read off each product's "Timber" option), stores the layout in
 `sessionStorage`, and turns "Add room to cart" into `/cart/add.js` — one line
 per variant, so a shelf in oak and one in blackwood are two lines.
 
-**Device support.** The build needs WebGL 2 and WebAssembly and nothing
-else — no threads, no GPU texture compression — which puts the floor at
-iOS 15 / Android Chrome 2016 / desktop browsers of 2017. Below that the
-loader says so. Weak devices (≤ 2 GB or ≤ 2 cores) and anything that
+**Device support.** The build needs WebGL 2 and WebAssembly with SIMD —
+no threads, no GPU texture compression. SIMD is the binding constraint: the
+Box3D extension is compiled with `-msimd128` (about 1.7× faster settling
+than without), which puts the floor at **Safari / iOS 16.4**, Chrome 91
+(Android and desktop) and Firefox 89. Below that the loader says so rather
+than hanging at "Building the room" — found on a real iPhone 13 on iOS 15.4,
+where both builds used to stall silently. Weak devices (≤ 2 GB or ≤ 2 cores) and anything that
 averages under 30 fps after start-up get **low-spec mode**: 3D at 70%
 resolution, no ceiling-light shadow, a tighter sun shadow. `?quality=low`
 or `?quality=high` on the URL forces a tier; the HUD shows when it is on.

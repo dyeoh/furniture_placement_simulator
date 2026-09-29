@@ -27,6 +27,9 @@ function hasWebGL2(): boolean {
 
 async function boot(): Promise<void> {
   performance.mark('sim-boot');
+  // index.html's inline check found no WebAssembly SIMD (Box3D needs it).
+  const unsupported = (window as unknown as { __unsupported?: string }).__unsupported;
+  if (unsupported) return fail(unsupported);
   const wantGpu = queryParam('renderer') === 'webgpu';
   if (wantGpu && !('gpu' in navigator)) return fail('This browser has no WebGPU. Drop ?renderer=webgpu to use WebGL 2.');
   if (!wantGpu && !hasWebGL2()) return fail('This browser has no WebGL 2, which the room planner needs.');

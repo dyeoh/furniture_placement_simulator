@@ -239,7 +239,24 @@ const engine = new Engine(GODOT_CONFIG);
 		threads: GODOT_THREADS_ENABLED,
 	});
 
-	if (missing.length !== 0) {
+	// The Box3D extension is built with WebAssembly SIMD (-msimd128). Without
+	// it the extension never loads and the page hangs at "Building the room",
+	// so say so up front. Checked apart from `missing`: that branch may try a
+	// service worker and reload, which cannot supply a CPU feature.
+	// The probe is the smallest SIMD module (wasm-feature-detect's).
+	function wasmSimd() {
+		try {
+			return WebAssembly.validate(new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0, 1, 5, 1, 96, 0, 1, 123,
+				3, 2, 1, 0, 10, 10, 1, 8, 0, 65, 0, 253, 15, 253, 98, 11]));
+		} catch (e) {
+			return false;
+		}
+	}
+
+	if (!wasmSimd()) {
+		displayFailureNotice('This browser is too old for the room planner: it needs WebAssembly SIMD\n'
+			+ '(Safari / iOS 16.4 or later, Chrome 91+, Firefox 89+).');
+	} else if (missing.length !== 0) {
 		if (GODOT_CONFIG['serviceWorker'] && GODOT_CONFIG['ensureCrossOriginIsolationHeaders'] && 'serviceWorker' in navigator) {
 			let serviceWorkerRegistrationPromise;
 			try {
