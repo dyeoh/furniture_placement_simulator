@@ -28,7 +28,7 @@ const BENIGN = [
 ];
 const isBenign = (text) => BENIGN.some((re) => re.test(text));
 const MIME = {
-  '.html': 'text/html', '.js': 'text/javascript', '.wasm': 'application/wasm',
+  '.html': 'text/html', '.js': 'text/javascript', '.wasm': 'application/wasm', '.css': 'text/css',
   '.pck': 'application/octet-stream', '.png': 'image/png', '.json': 'application/json',
 };
 

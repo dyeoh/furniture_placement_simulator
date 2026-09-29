@@ -3,6 +3,11 @@
   "private": true,
   "type": "module",
   "description": "Boots the exported web build in Chromium, WebKit and Firefox.",
-  "scripts": { "smoke": "node smoke.mjs ../../web" },
-  "devDependencies": { "playwright": "1.55.0" }
+  "scripts": {
+    "smoke": "node smoke.mjs ../../web"
+  },
+  "devDependencies": {
+    "playwright": "1.55.0",
+    "selenium-webdriver": "^4.49.0"
+  }
 }

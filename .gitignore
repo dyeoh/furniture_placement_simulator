@@ -16,3 +16,9 @@ shots/
 
 # Playwright smoke test dependencies (tests/web).
 node_modules/
+
+# Benchmark output (tests/bench).
+bench-results/
+
+# BrowserStack credentials for tests/web/bench/browserstack.mjs. Never commit.
+tests/web/.env.browserstack
