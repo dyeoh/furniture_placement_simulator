@@ -131,8 +131,26 @@ static func _scene(model: String) -> PackedScene:
 		var probe := scene.instantiate()
 		var turn := Transform3D(Basis(Vector3.UP, float(MODELS[model]["yaw"])), Vector3.ZERO)
 		_bounds[model] = ModelLoader._measure(probe, turn, PackedVector3Array())
+		_enable_baked_ao(probe)
 		probe.free()
 	return _scenes[model]
+
+
+## Poly Haven packs ambient occlusion, roughness and metalness into one "ARM"
+## texture (R, G, B). The glTF exports reference it for roughness/metal only,
+## so the baked occlusion -- the dark insides of cubbies and drawers -- is
+## wired up here, once per model (the materials are shared by every
+## instance, and tint() copies carry it along). Ambient only, like the room.
+static func _enable_baked_ao(root: Node) -> void:
+	for mi in _meshes(root):
+		for i in mi.mesh.get_surface_count():
+			var m := mi.mesh.surface_get_material(i) as StandardMaterial3D
+			if m == null or m.roughness_texture == null or not m.roughness_texture.resource_path.contains("_arm"):
+				continue
+			m.ao_enabled = true
+			m.ao_texture = m.roughness_texture
+			m.ao_texture_channel = BaseMaterial3D.TEXTURE_CHANNEL_RED
+			m.ao_light_affect = 0.0
 
 
 ## Meshes that should not throw shadows (a lamp fitting around its own bulb).

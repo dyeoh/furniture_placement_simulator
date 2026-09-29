@@ -20,12 +20,12 @@ replaces it with the live collection at runtime.
 
 | | |
 |---|---|
-| **Place** | Tap a catalogue item, drag it in, rotate in quarter turns, drop. Three live-switchable snap modes: free, 25 cm grid, wall magnet. Overlaps and out-of-room drops are refused (green/red ghost). A dropped piece is a rigid body until it falls asleep, then it is *placed*. The room's width and depth are typed in metres and shown as dimension lines in the view; resizing rebuilds the room around what is placed and flags anything that no longer fits. |
+| **Place** | Tap a catalogue item, drag it in, rotate in quarter turns, drop. Three live-switchable snap modes: free, 25 cm grid, wall magnet. Overlaps and out-of-room drops are refused (green/red ghost). A dropped piece is a rigid body until it falls asleep, then it is *placed*. The room's width, depth and wall height are typed in metres and shown as dimension lines in the view; resizing rebuilds the room around what is placed and flags anything that no longer fits (including pieces taller than the walls). Windows and a door come from the same catalogue under *Architecture* and slide along the walls; a window cuts a real hole, so the sun comes through it. |
 | **Paint** | Swatches (wall paints + the store's five timbers) or a colour picker; tap a wall or the floor. Painted plaster and laminate planks with real relief; the swatch is the colour you get. Walls between the camera and the room are cut away. |
-| **Light** | Swing the sun round the sky and warm it up, dim the ambient, switch on the ceiling light, add and remove floor lamps — each dimmable. Lighting is saved with the layout. |
+| **Light** | Swing the sun round the sky and warm it up, set how much light the room bounces, switch on the ceiling light, add and remove floor lamps — each dimmable. A lamp is an open drum round a bulb; the fabric is translucent (backlight — the web renderer has no subsurface scattering), so the shade glows from within in the bulb's colour. Lamps cast real shadows (the shade itself does not, as fabric passes most of its light); the two nearest the view do, none on low spec. Switch the room's **ceiling** on and it blocks the sun like a real one: light gets in only through the windows, even in the planner view (the ceiling and the cut-away walls still cast shadows while hidden). Ambient light is bounce from what is actually lit — daylight through the glass, the ceiling light, the lamps, tinted by them — so a covered room with everything off goes dark and a lamp-lit evening is warm all over. Lighting and the ceiling are saved with the layout. |
 | **Walk** | First-person capsule mover. Walking into furniture shoves it (450 N, tunable live) — a side table skids, a bed does not. `E` carries a piece and drops it wherever you are. On a touchscreen: a stick on the left, drag to look on the right, a carry button. |
 | **Uploads** | Drop a `.glb`/`.gltf` in and it becomes a catalogue item: bounding-box collider (convex hull optional), mm-exported models auto-scaled. |
-| **Looks** | The store publishes no 3D models, so each product is a generic CC0 model (Poly Haven) stretched to the product's real dimensions and tinted to its timber; beds, racks and lamps are generated. Room surfaces are PBR (albedo/normal/roughness). |
+| **Looks** | The store publishes no 3D models, so each product is a generic CC0 model (Poly Haven) stretched to the product's real dimensions and tinted to its timber; beds, racks and lamps are generated. Room surfaces are PBR (albedo/normal/roughness). Soft shading on the wall behind anything standing against it, the models' own baked occlusion (from their ARM maps), and ambient-only occlusion maps darkening the walls and floor into their seams, stand in for SSAO (the web renderer has none); AgX tonemapping rolls off highlights instead of clipping them; walls carry skirting, a crown moulding under a ceiling, and a dark section-cut cap on top. |
 | **Store** | Runs in an `<iframe>` on the Shopify page. The page sends the collection as the catalogue with one variant id per timber finish; the sim sends the layout on every change and "add to cart" with the variant matching each piece's finish. |
 
 ## Setup (local)
@@ -64,10 +64,13 @@ $GODOT --headless --path game --import               # twice on a fresh clone
 $GODOT --headless --path game --script res://tests/test_backends.gd
 $GODOT --headless --path game --script res://tests/test_placement.gd
 $GODOT --headless --path game --script res://tests/test_touch.gd
+$GODOT --headless --path game --script res://tests/test_showroom.gd
 ```
 
 The first two run on both backends; `test_touch.gd` drives the on-screen
-walkthrough controls with synthetic multi-touch through the real viewport.
+walkthrough controls with synthetic multi-touch through the real viewport, and
+`test_showroom.gd` drives the whole scene with the mouse: placing, moving and
+cancelling a window, the ceiling, and a wall-height change.
 
 **Browser smoke test.** CI also boots the fresh export in Chromium, WebKit
 (Safari's engine) and Firefox, plus a phone profile in low-spec mode, and

@@ -3,6 +3,8 @@ extends Node3D
 ## The showroom: one room, a catalogue, three tools.
 ##
 ##   Place  drag furniture in from the catalogue, rotate, drop; it settles.
+##          Windows and doors come from the same catalogue and slide along
+##          the walls instead.
 ##   Paint  pick a swatch, tap a wall or the floor.
 ##   Walk   first person: WASD, mouse look, E to carry / drop, bump into things.
 ##   Light  swing the sun, dim the ambient and ceiling light, add floor lamps.
@@ -23,11 +25,16 @@ extends Node3D
 ## cameras, input and wiring only.
 
 const DEFAULT_ROOM := Vector2(6.0, 5.0)
+## Lamps whose light casts shadows at once: each is a cube map, six extra
+## scene passes, so only the nearest few to the view. With the ceiling
+## light this must stay within the shadow atlas's four slots (Quality).
+const LAMP_SHADOWS := 2
 
 var backend: PhysicsBackend
 var room := RoomBuilder.new()
 var catalog := Catalog.new()
 var placer := Placer.new()
+var openings := Openings.new()
 var painter := Painter.new()
 var shopper := Shopper.new()
 var bridge := HostBridge.new()
@@ -53,6 +60,7 @@ var _orbiting := false
 var _press_drag := false
 var _last_pointer := Vector2.ZERO
 var _selected: PlacedItem
+var _selected_opening: WallOpening
 var _pending_layout: Dictionary = {}
 ## Fingers currently down (index -> position) and the span between the
 ## first two, for pinch zoom. The web build synthesises no magnify gesture.
@@ -72,7 +80,9 @@ func _ready() -> void:
 	bridge.model_received.connect(_on_model_bytes)
 	quality.decide()
 	quality.apply(get_viewport(), lighting)
-	quality.changed.connect(func(_low: bool): quality.apply(get_viewport(), lighting))
+	quality.changed.connect(func(_low: bool):
+		quality.apply(get_viewport(), lighting)
+		_sync_light_sources())
 	bridge.setup({"quality": quality.label()})
 	_start_backend()
 
@@ -110,6 +120,10 @@ func _build_ui() -> void:
 			placer.drag_to(placer.dragging.position))
 	_panel.rotate_pressed.connect(func(): placer.rotate())
 	_panel.delete_pressed.connect(_delete_selected)
+	_panel.ceiling_toggled.connect(func(on: bool):
+		room.set_ceiling(on)
+		_sync_light_sources()
+		_on_layout_changed())
 	_panel.finish_chosen.connect(func(key):
 		var p := placer.dragging if placer.dragging != null else _selected
 		if p != null:
@@ -121,13 +135,13 @@ func _build_ui() -> void:
 	_panel.upload_pressed.connect(_on_upload)
 	_panel.clear_pressed.connect(func(): placer.clear())
 	_panel.cart_pressed.connect(_add_to_cart)
-	_panel.export_pressed.connect(func(): print(Layout.to_json(Layout.capture(placer, room, lighting))))
+	_panel.export_pressed.connect(func(): print(Layout.to_json(_capture())))
 	_panel.light_changed.connect(_on_light_changed)
 	_panel.lamp_changed.connect(_on_lamp_changed)
 	_panel.add_lamp_pressed.connect(func(): _spawn_item(catalog.find("floor-lamp")))
 	_panel.room_size_changed.connect(_on_room_size_changed)
 	_panel.set_lighting(lighting.to_dict())
-	_panel.set_room_size(room.width, room.depth)
+	_panel.set_room_size(room.width, room.depth, room.wall_height, room.has_ceiling)
 
 	var hud_panel := PanelContainer.new()
 	hud_panel.set_anchors_preset(Control.PRESET_TOP_RIGHT)
@@ -165,10 +179,11 @@ func _build_ui() -> void:
 
 
 func _start_backend() -> void:
+	openings.cancel()
 	if backend != null:
 		# A restore into a resized room arrives with the layout already set.
 		if _pending_layout.is_empty():
-			_pending_layout = Layout.capture(placer, room, lighting)
+			_pending_layout = _capture()
 		shopper.release()
 		placer.clear()
 		backend.shutdown()
@@ -190,6 +205,10 @@ func _start_backend() -> void:
 	_dims = DimensionLines.new()
 	_visual_root.add_child(_dims)
 	_dims.build(room)
+	openings.setup(room, catalog)
+	if not openings.changed.is_connected(_on_layout_changed):
+		openings.changed.connect(_on_layout_changed)
+	lighting.set_room_height(room.wall_height)
 	placer.setup(backend, room, catalog, _visual_root)
 	painter.setup(room)
 	if not placer.changed.is_connected(_on_layout_changed):
@@ -198,6 +217,7 @@ func _start_backend() -> void:
 	if not _pending_layout.is_empty():
 		_restore_layout(_pending_layout)
 		_pending_layout = {}
+	_sync_light_sources()
 	_set_tool(_tool)
 
 
@@ -207,22 +227,64 @@ func _restore_layout(data: Dictionary) -> void:
 	var r: Dictionary = data.get("room", {})
 	var w := float(r.get("width", room.width))
 	var d := float(r.get("depth", room.depth))
-	if not is_equal_approx(w, room.width) or not is_equal_approx(d, room.depth):
+	var h := clampf(float(r.get("height", room.wall_height)), RoomBuilder.MIN_HEIGHT, RoomBuilder.MAX_HEIGHT)
+	if not is_equal_approx(w, room.width) or not is_equal_approx(d, room.depth) \
+			or not is_equal_approx(h, room.wall_height):
 		room.width = w
 		room.depth = d
+		room.wall_height = h
 		_pending_layout = data
 		_start_backend()
 	else:
-		Layout.restore(data, placer, room, lighting)
+		Layout.restore(data, placer, room, lighting, openings)
 	_panel.set_lighting(lighting.to_dict())
-	_panel.set_room_size(room.width, room.depth)
+	_panel.set_room_size(room.width, room.depth, room.wall_height, room.has_ceiling)
 
 
-func _on_room_size_changed(width: float, depth: float) -> void:
+func _on_room_size_changed(width: float, depth: float, height: float) -> void:
 	room.width = width
 	room.depth = depth
+	room.wall_height = clampf(height, RoomBuilder.MIN_HEIGHT, RoomBuilder.MAX_HEIGHT)
 	_dist = clampf(maxf(width, depth) * 1.5, 2.5, 20.0)
 	_start_backend()
+
+
+## Tell Lighting what light the room actually has, for its bounce: the
+## ceiling, the glass, and the lamps that are on.
+func _sync_light_sources() -> void:
+	var glass := 0.0
+	for op in room.openings:
+		if op.cuts_wall() and op.valid and not op.ghost:
+			glass += op.width() * op.height()
+	lighting.set_room(room.has_ceiling, glass, room.width * room.depth,
+		Vector2(room.width, room.depth).length())
+	var energy := 0.0
+	var warm := 0.0
+	for p in placer.items:
+		if p.item.is_light() and p.state != PlacedItem.State.GHOST and bool(p.light["on"]):
+			energy += float(p.light["energy"])
+			warm += float(p.light["warmth"]) * float(p.light["energy"])
+	lighting.set_lamps(energy, warm / energy if energy > 0.0 else 0.7)
+	_pick_lamp_shadows()
+
+
+## Give shadows to the LAMP_SHADOWS lit lamps nearest the camera.
+func _pick_lamp_shadows() -> void:
+	var eye := _camera.global_position if _camera != null else Vector3.ZERO
+	var lit: Array[PlacedItem] = []
+	for p in placer.items:
+		if p.item.is_light() and p.state != PlacedItem.State.GHOST and bool(p.light["on"]):
+			lit.append(p)
+	lit.sort_custom(func(a: PlacedItem, b: PlacedItem) -> bool:
+		return a.position.distance_squared_to(eye) < b.position.distance_squared_to(eye))
+	for p in placer.items:
+		if p.item.is_light():
+			var rank := lit.find(p)
+			p.set_light_shadow(rank >= 0 and rank < LAMP_SHADOWS)
+
+
+func _capture() -> Dictionary:
+	return Layout.capture(placer, room, lighting, openings)
 
 #endregion
 
@@ -242,14 +304,28 @@ func _set_tool(tool: int) -> void:
 	if _dims != null:
 		_dims.visible = (tool != CatalogPanel.Tool.WALK)
 	painter.clear_hover()
+	# The view jumps between planner and walkthrough: re-pick which lamps shadow.
+	if placer.backend != null:
+		_pick_lamp_shadows()
 	if tool != CatalogPanel.Tool.PLACE and placer.dragging != null:
 		placer.cancel()
+	if tool != CatalogPanel.Tool.PLACE:
+		openings.cancel()
 	_select(null)
 
 
 func _spawn_item(item: FurnitureItem) -> void:
 	if item == null:
 		return
+	if item.is_opening():
+		_set_tool(CatalogPanel.Tool.PLACE)
+		if placer.dragging != null:
+			placer.cancel()
+		var op := openings.begin(item)
+		_press_drag = false
+		_select_opening(op)
+		return
+	openings.cancel()
 	# A lamp added from the Light tool is dragged in right there; anything
 	# else is a Place job.
 	if _tool != CatalogPanel.Tool.LIGHT or not item.is_light():
@@ -260,6 +336,9 @@ func _spawn_item(item: FurnitureItem) -> void:
 
 
 func _select(p: PlacedItem) -> void:
+	if _selected_opening != null:
+		_selected_opening.set_highlight(false)
+		_selected_opening = null
 	if _selected != null and _selected != p:
 		_selected.set_highlight(false)
 	_selected = p
@@ -268,7 +347,19 @@ func _select(p: PlacedItem) -> void:
 	_panel.show_selected(p)
 
 
+func _select_opening(op: WallOpening) -> void:
+	_select(null)
+	_selected_opening = op
+	if op != null and not op.ghost:
+		op.set_highlight(true)
+	_panel.show_opening(op)
+
+
 func _delete_selected() -> void:
+	if openings.dragging != null or _selected_opening != null:
+		openings.remove(openings.dragging if openings.dragging != null else _selected_opening)
+		_select(null)
+		return
 	if placer.dragging != null:
 		placer.remove(placer.dragging)
 	elif _selected != null:
@@ -332,6 +423,9 @@ func _key(k: InputEventKey) -> void:
 		KEY_ESCAPE:
 			if _tool == CatalogPanel.Tool.WALK:
 				Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+			elif openings.dragging != null:
+				openings.cancel()
+				_select(null)
 			elif placer.dragging != null:
 				placer.cancel()
 				_select(null)
@@ -396,7 +490,11 @@ func _input_place(event: InputEvent) -> void:
 			var ray := _pointer_ray(mb.position)
 			if mb.pressed:
 				_last_pointer = mb.position
-				if placer.dragging != null:
+				if openings.dragging != null:
+					# Sticky, like furniture: the press lands it, release drops.
+					openings.drag_ray(ray[0], ray[1])
+					_press_drag = true
+				elif placer.dragging != null:
 					# Sticky drag from the catalogue: the press lands it under
 					# the pointer (a finger gives no motion beforehand, so it
 					# would otherwise drop where it spawned) and the release
@@ -407,15 +505,23 @@ func _input_place(event: InputEvent) -> void:
 					_press_drag = true
 				else:
 					var hit := placer.pick(ray[0], ray[1])
+					var opening: WallOpening = openings.pick(ray[0], ray[1])[0]
 					if hit != null and hit.state != PlacedItem.State.CARRIED:
 						placer.lift(hit)
 						_press_drag = true
 						_select(hit)
+					elif opening != null:
+						openings.lift(opening)
+						_press_drag = true
+						_select_opening(opening)
 					else:
 						_select(null)
 						_orbiting = true
 			else:
-				if _press_drag and placer.dragging != null:
+				if _press_drag and openings.dragging != null:
+					if openings.drop():
+						_select(null)
+				elif _press_drag and placer.dragging != null:
 					# Press-drag-release: release is the drop. If it does not
 					# fit, keep it on the cursor so the shopper can find a spot.
 					if placer.drop():
@@ -427,6 +533,10 @@ func _input_place(event: InputEvent) -> void:
 		if _orbiting:
 			_yaw -= mm.relative.x * 0.006
 			_pitch = clampf(_pitch - mm.relative.y * 0.006, -1.5, -0.15)
+		elif openings.dragging != null:
+			var ray := _pointer_ray(mm.position)
+			openings.drag_ray(ray[0], ray[1])
+			_panel.show_opening(openings.dragging)
 		elif placer.dragging != null:
 			var ray := _pointer_ray(mm.position)
 			var hit = Placer.floor_hit(ray[0], ray[1])
@@ -579,6 +689,9 @@ func _update_hud() -> void:
 			if placer.dragging != null:
 				lines.append("Holding %s — %s" % [placer.dragging.item.name,
 					"fits" if placer.dragging.valid else "doesn't fit"])
+			elif openings.dragging != null:
+				lines.append("Holding %s — slide it along a wall; %s" % [openings.dragging.item.name,
+					"fits" if openings.dragging.valid else "doesn't fit"])
 		CatalogPanel.Tool.PAINT:
 			lines.append("PAINT — tap a wall or the floor")
 			if painter.hover != "":
@@ -610,9 +723,12 @@ func _update_hud() -> void:
 
 
 func _on_layout_changed() -> void:
-	bridge.post(Layout.capture(placer, room, lighting))
+	_sync_light_sources()
+	bridge.post(_capture())
 	if _selected != null:
 		_panel.show_selected(_selected)
+	elif _selected_opening != null:
+		_panel.show_opening(_selected_opening)
 
 #endregion
 

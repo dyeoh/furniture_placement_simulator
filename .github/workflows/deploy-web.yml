@@ -119,6 +119,7 @@ jobs:
           # exercise placement, layout and the mover contract.
           "$GODOT" --headless --path game --script res://tests/test_placement.gd
           "$GODOT" --headless --path game --script res://tests/test_touch.gd
+          "$GODOT" --headless --path game --script res://tests/test_showroom.gd
 
       - name: Export
         run: |

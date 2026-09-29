@@ -27,6 +27,8 @@ const SETTLE_GRACE := 0.25
 ## Give up waiting for sleep after this long; something wedged against a wall
 ## may jitter forever, and the shopper should still be able to interact with it.
 const SETTLE_TIMEOUT := 4.0
+## Closer than this to a wall and a piece shades it (PlacedItem.set_wall_contact).
+const WALL_CONTACT := 0.05
 
 var backend: PhysicsBackend
 var room: RoomBuilder
@@ -255,6 +257,7 @@ static func _nearest_quarter(b: Basis) -> int:
 
 func update(dt: float) -> void:
 	for p in items:
+		_update_wall_contact(p)
 		match p.state:
 			PlacedItem.State.SETTLING:
 				p.settle_time += dt
@@ -268,6 +271,31 @@ func update(dt: float) -> void:
 					changed.emit()
 			PlacedItem.State.PLACED, PlacedItem.State.CARRIED:
 				p.sync_visual(backend)
+
+
+## A piece standing within WALL_CONTACT of a wall darkens it (the nearest
+## one). Every frame, because a shove in the walkthrough can move it off.
+func _update_wall_contact(p: PlacedItem) -> void:
+	if p.state == PlacedItem.State.GHOST or p.state == PlacedItem.State.CARRIED:
+		p.set_wall_contact(Vector3.ZERO, Vector3.ZERO, Vector2.ZERO)
+		return
+	var box := p.aabb(backend if p.body >= 0 else null)
+	var h := room.half_extents()
+	var c := box.get_center()
+	var gaps := [
+		[box.position.z + h.y, Vector3.BACK, Vector3(c.x, c.y, -h.y), Vector2(box.size.x, box.size.y)],
+		[h.y - box.end.z, Vector3.FORWARD, Vector3(c.x, c.y, h.y), Vector2(box.size.x, box.size.y)],
+		[box.position.x + h.x, Vector3.RIGHT, Vector3(-h.x, c.y, c.z), Vector2(box.size.z, box.size.y)],
+		[h.x - box.end.x, Vector3.LEFT, Vector3(h.x, c.y, c.z), Vector2(box.size.z, box.size.y)],
+	]
+	var best = null
+	for g in gaps:
+		if g[0] < WALL_CONTACT and (best == null or g[0] < best[0]):
+			best = g
+	if best == null:
+		p.set_wall_contact(Vector3.ZERO, Vector3.ZERO, Vector2.ZERO)
+	else:
+		p.set_wall_contact(best[1], best[2], best[3])
 
 
 ## Is a settle still in progress anywhere? The HUD uses this.

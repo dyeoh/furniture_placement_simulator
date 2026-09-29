@@ -38,6 +38,18 @@ var light := {"on": true, "energy": 0.6, "warmth": 0.7}
 const LIGHT_MAX_ENERGY := 3.0
 const LIGHT_RANGE := 5.0
 
+## Lamp shadows are cube maps (six scene passes each): off on low spec
+## (Quality), and even then only for the lamps the showroom picks.
+static var shadows_allowed := true
+## How brightly a lit bulb glows, per unit of lamp energy.
+const BULB_GLOW := 4.0
+## The shade's own faint glow per unit of lamp energy, on top of the light
+## its fabric lets through (FurnitureShapes.FABRIC_TRANSLUCENCY): the part
+## that scatters inside the weave and leaves evenly.
+const SHADE_GLOW := 0.12
+## How dark the wall gets behind a piece standing against it.
+const WALL_CONTACT_STRENGTH := 0.3
+
 var node: Node3D
 var _tint_mesh: MeshInstance3D
 var _ghost_mat: StandardMaterial3D
@@ -46,6 +58,12 @@ var _ghost_mat: StandardMaterial3D
 var _wood_mat: StandardMaterial3D
 var _model_node: Node3D
 var _omni: OmniLight3D
+var _bulb_mat: StandardMaterial3D
+var _shade_mat: StandardMaterial3D
+## The same soft shadow, upright on the wall the piece stands against, and
+## what it was built for ({} = none).
+var _wall_blob: MeshInstance3D
+var _wall_key: Dictionary = {}
 
 
 func angle() -> float:
@@ -110,9 +128,16 @@ func build_visual(parent: Node3D, color: Color) -> void:
 		_omni.omni_range = LIGHT_RANGE
 		_omni.omni_attenuation = 1.2
 		_omni.shadow_enabled = false
-		# Just under the shade, so the shade itself catches the light.
-		_omni.position = Vector3(0, item.size.y * 0.5 - item.size.y * 0.3, 0)
+		_omni.shadow_blur = 2.0
+		# At the bulb, inside the hollow shade, which it lights from within.
+		_omni.position = Vector3(0, FurnitureShapes.bulb_height(item.size), 0)
 		node.add_child(_omni)
+		var bulb := node.find_child("Bulb", true, false) as MeshInstance3D
+		if bulb != null:
+			_bulb_mat = bulb.material_override
+		var shade := node.find_child("Shade", true, false) as MeshInstance3D
+		if shade != null:
+			_shade_mat = shade.material_override
 		apply_light()
 	# Validity overlay: a translucent shell slightly larger than the item. Used
 	# instead of tinting the item's own material so uploaded models -- whose
@@ -126,6 +151,8 @@ func build_visual(parent: Node3D, color: Color) -> void:
 	_ghost_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	_ghost_mat.albedo_color = Color(0.3, 0.9, 0.4, 0.35)
 	_tint_mesh.material_override = _ghost_mat
+	# A selected lamp's shell would otherwise block every ray of its light.
+	_tint_mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_tint_mesh.visible = false
 	node.add_child(_tint_mesh)
 	sync_visual(null)
@@ -136,6 +163,16 @@ func set_color(color: Color) -> void:
 		SurfaceMaterials.tint(_wood_mat, "oak_veneer_01", color)
 	elif _model_node != null:
 		ModelLibrary.tint(_model_node, item.model, color)
+
+
+## Whether this lamp's light casts shadows (the showroom's budget decides).
+func set_light_shadow(on: bool) -> void:
+	if _omni != null:
+		_omni.shadow_enabled = on and shadows_allowed
+
+
+func light_casts_shadow() -> bool:
+	return _omni != null and _omni.shadow_enabled
 
 
 func set_light(on: bool, energy: float, warmth: float) -> void:
@@ -149,6 +186,44 @@ func apply_light() -> void:
 	_omni.visible = bool(light["on"])
 	_omni.light_energy = float(light["energy"]) * LIGHT_MAX_ENERGY
 	_omni.light_color = Lighting.warmth_color(float(light["warmth"]))
+	# A lit bulb glows, and the fabric round it a little; off, neither does.
+	for pair in [[_bulb_mat, BULB_GLOW], [_shade_mat, SHADE_GLOW]]:
+		var m: StandardMaterial3D = pair[0]
+		if m == null:
+			continue
+		m.emission_enabled = bool(light["on"])
+		m.emission = _omni.light_color
+		m.emission_energy_multiplier = float(light["energy"]) * float(pair[1])
+
+
+## Darken the wall behind the piece: [param inward] is the wall's normal into
+## the room, [param centre] the middle of the piece's outline on the wall, and
+## [param size] that outline (along the wall, up). Empty [param inward]
+## (Vector3.ZERO) clears it.
+func set_wall_contact(inward: Vector3, centre: Vector3, size: Vector2) -> void:
+	var key := {} if inward == Vector3.ZERO else {"n": inward, "c": centre.snapped(Vector3.ONE * 0.01),
+		"s": size.snapped(Vector2.ONE * 0.01)}
+	if key == _wall_key or node == null:
+		return
+	_wall_key = key
+	if _wall_blob != null:
+		_wall_blob.queue_free()
+		_wall_blob = null
+	if key.is_empty():
+		return
+	_wall_blob = Occlusion.blob(size)
+	_wall_blob.name = "WallContact"
+	_wall_blob.top_level = true
+	node.add_child(_wall_blob)
+	# PlaneMesh: X and Z span the quad, Y is its normal.
+	var along := Vector3.UP.cross(inward)
+	_wall_blob.global_transform = Transform3D(Basis(along, inward, along.cross(inward)),
+		centre + inward * Occlusion.BLOB_LIFT)
+	Occlusion.set_blob_strength(_wall_blob, WALL_CONTACT_STRENGTH)
+
+
+func has_wall_contact() -> bool:
+	return not _wall_key.is_empty()
 
 
 func set_tint(show: bool, ok: bool) -> void:
@@ -186,6 +261,10 @@ func free_visual() -> void:
 	_wood_mat = null
 	_model_node = null
 	_omni = null
+	_bulb_mat = null
+	_shade_mat = null
+	_wall_blob = null
+	_wall_key = {}
 
 #endregion
 

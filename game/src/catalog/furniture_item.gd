@@ -35,8 +35,11 @@ var mesh_scene: PackedScene
 ## to [member size]. Empty = use [member shape_kind].
 var model := ""
 ## Generated geometry (FurnitureShapes key: bed, rack, lamp) when no generic
-## model suits; empty = plain slab. "lamp" also makes the item a light.
+## model suits; empty = plain slab. "lamp" also makes the item a light;
+## "window" and "door" make it an opening that lives in a wall.
 var shape_kind := ""
+## Openings only: height of the bottom edge above the floor, in metres.
+var sill := 0.0
 ## Collider description for PhysicsBackend.body_create(). Defaults to a box of
 ## [member size]; uploaded models may swap in a hull.
 var shape: Dictionary = {}
@@ -73,6 +76,7 @@ static func from_dict(d: Dictionary, finishes: Dictionary) -> FurnitureItem:
 	it.shape = {"type": PhysicsBackend.SHAPE_BOX, "size": it.size}
 	it.model = str(d.get("model", ""))
 	it.shape_kind = str(d.get("shape", ""))
+	it.sill = float(d.get("sill_mm", 0.0)) * 0.001 if d.has("sill_mm") else float(d.get("sill", 0.0))
 	if it.model == "" and it.shape_kind == "":
 		it.shape_kind = shape_for_name(it.name)
 		if it.shape_kind == "":
@@ -96,13 +100,18 @@ func is_light() -> bool:
 	return shape_kind == "lamp"
 
 
+## A window or door: placed in a wall by Openings, not on the floor by Placer.
+func is_opening() -> bool:
+	return shape_kind == "window" or shape_kind == "door"
+
+
 func to_dict() -> Dictionary:
 	return {
 		"id": id, "name": name,
 		"size": [size.x, size.y, size.z],
 		"mass": mass, "wall_snap": wall_snap, "variant_id": variant_id, "variants": variants,
 		"finish": finish, "color": "#" + color.to_html(false), "estimated": estimated,
-		"model": model, "shape": shape_kind,
+		"model": model, "shape": shape_kind, "sill": sill,
 	}
 
 

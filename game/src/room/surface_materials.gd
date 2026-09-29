@@ -25,12 +25,15 @@ static var _textures: Dictionary = {}
 
 ## Painted plaster: the paint *is* the colour, so no albedo texture -- the
 ## photographed plaster is stained in a way a showroom wall is not -- just
-## its relief, matte.
-static func plaster(color: Color) -> StandardMaterial3D:
+## its relief, matte. [param with_ao]: the mesh carries UV2 for a seam AO
+## map (see [method set_ao]).
+static func plaster(color: Color, with_ao := false) -> StandardMaterial3D:
 	var m := _make("plaster_grey_04", true, false)
 	m.normal_scale = 0.5
 	m.roughness = 0.92
 	m.albedo_color = color
+	if with_ao:
+		_enable_ao(m)
 	return m
 
 
@@ -43,6 +46,7 @@ static func floor(color: Color) -> StandardMaterial3D:
 	m.roughness = 0.72
 	m.metallic_specular = 0.3
 	tint(m, "laminate_floor_02", color)
+	_enable_ao(m)
 	return m
 
 
@@ -55,6 +59,20 @@ static func wood(color: Color) -> StandardMaterial3D:
 	m.roughness_texture_channel = BaseMaterial3D.TEXTURE_CHANNEL_RED
 	tint(m, "oak_veneer_01", color)
 	return m
+
+
+## Room surfaces darken into their seams through an AO map on UV2 (the
+## textures are triplanar, so UV2 is free). Ambient only: direct light --
+## a sun patch across a corner -- is left alone, as it is in a real room.
+static func _enable_ao(m: StandardMaterial3D) -> void:
+	m.ao_enabled = true
+	m.ao_on_uv2 = true
+	m.ao_light_affect = 0.0
+	m.ao_texture_channel = BaseMaterial3D.TEXTURE_CHANNEL_RED
+
+
+static func set_ao(m: StandardMaterial3D, tex: Texture2D) -> void:
+	m.ao_texture = tex
 
 
 ## Colour that, multiplied with the set's albedo, averages to [param color].

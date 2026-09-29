@@ -167,8 +167,32 @@ func run() -> void:
 		var lamp_p := placer.begin(catalog.find("floor-lamp"))
 		placer.drag_to(Vector3(2.0, 0, -1.5))
 		lamp_p.set_light(false, 0.25, 0.9)
+		var shade_mi := lamp_p.node.find_child("Shade", true, false) as MeshInstance3D
+		check("shade lets the lamp's light through (casts nothing)",
+			shade_mi.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF)
+		lamp_p.set_light_shadow(true)
+		check("lamp casts shadows when allowed", lamp_p.light_casts_shadow())
+		PlacedItem.shadows_allowed = false
+		lamp_p.set_light_shadow(true)
+		check("no lamp shadows on low spec", not lamp_p.light_casts_shadow())
+		PlacedItem.shadows_allowed = true
+		lamp_p.set_light_shadow(false)
 		check("lamp drop", placer.drop())
 		check("lamp has a light node", lamp_p.node.get_child_count() > 0 and lamp_p.node.find_children("*", "OmniLight3D", true, false).size() == 1)
+		var drum := (lamp_p.node.find_child("Shade", true, false) as MeshInstance3D).mesh as CylinderMesh
+		var bulb_mi := lamp_p.node.find_child("Bulb", true, false) as MeshInstance3D
+		var lamp_omni := lamp_p.node.find_children("*", "OmniLight3D", true, false)[0] as OmniLight3D
+		check("hollow shade with a bulb at the light", not drum.cap_top and not drum.cap_bottom and bulb_mi != null
+			and bulb_mi.global_position.is_equal_approx(lamp_omni.global_position))
+		var bulb_glass := bulb_mi.material_override as StandardMaterial3D
+		var fabric_mat := (lamp_p.node.find_child("Shade", true, false) as MeshInstance3D).material_override as StandardMaterial3D
+		check("shade fabric is translucent", fabric_mat.backlight_enabled
+			and fabric_mat.backlight == FurnitureShapes.FABRIC_TRANSLUCENCY)
+		check("off bulb and shade are dark", not bulb_glass.emission_enabled and not fabric_mat.emission_enabled)
+		lamp_p.set_light(true, 0.5, 0.9)
+		check("lit bulb glows, shade faintly", bulb_glass.emission_enabled and fabric_mat.emission_enabled
+			and is_equal_approx(fabric_mat.emission_energy_multiplier, 0.5 * PlacedItem.SHADE_GLOW))
+		lamp_p.set_light(false, 0.25, 0.9)
 		check("lamp not in cart", placer.cart_lines().size() == 3)
 		await settle(backend, placer)
 
@@ -193,6 +217,52 @@ func run() -> void:
 		check("restore paint", room.paint_color("north").is_equal_approx(Color("#b3624a")))
 		check("restore lighting", lighting.settings["sun"]["azimuth"] == 123.0 and lighting.settings["ceiling"]["on"] == true
 			and lighting.ceiling_light.visible)
+		# --- ambient is bounce from the light that is actually there
+		lighting.from_dict({"sun": {"energy": 0.5}, "ambient": {"energy": 0.3}, "ceiling": {"on": false}})
+		lighting.set_room(false, 0.0, 30.0)
+		lighting.set_lamps(0.0, 0.7)
+		check("open room, sun 0.5: the old ambient", is_equal_approx(lighting.env.ambient_light_energy, 0.3),
+			"%.3f" % lighting.env.ambient_light_energy)
+		lighting.set_room(true, 0.0, 30.0)
+		check("covered, no windows: dark", is_equal_approx(lighting.env.ambient_light_energy, Lighting.AMBIENT_FLOOR)
+			and is_equal_approx(lighting.fill.light_energy, 0.0), "%.3f" % lighting.env.ambient_light_energy)
+		lighting.set_room(true, 3.0, 30.0)
+		var windowed := lighting.env.ambient_light_energy
+		check("a window lets daylight in", windowed > Lighting.AMBIENT_FLOOR * 2.0 and windowed < 0.3, "%.3f" % windowed)
+		lighting.set_sun("energy", 0.0)
+		lighting.set_room(true, 3.0, 30.0)
+		check("no sun, no lamps: dark", is_equal_approx(lighting.env.ambient_light_energy, Lighting.AMBIENT_FLOOR))
+		lighting.set_lamps(0.8, 0.9)
+		var col := lighting.env.ambient_light_color
+		check("a lamp brings warm bounce", lighting.env.ambient_light_energy > Lighting.AMBIENT_FLOOR
+			and col.r > col.b + 0.2, "%.3f %s" % [lighting.env.ambient_light_energy, col])
+		lighting.set_lamps(0.0, 0.7)
+		lighting.set_room(false, 0.0, 30.0)
+		lighting.from_dict(Layout.from_json(json)["lighting"])
+
+		# --- models carry their baked AO (the ARM texture's red channel)
+		var model_mat: StandardMaterial3D = null
+		for p in placer.items:
+			if p.item.model == "" or p.node == null:
+				continue
+			for n in p.node.find_children("*", "MeshInstance3D", true, false):
+				var m := (n as MeshInstance3D).get_active_material(0) as StandardMaterial3D
+				if m != null and m.roughness_texture != null:
+					model_mat = m
+		check("model AO from its ARM texture", model_mat != null and model_mat.ao_enabled
+			and model_mat.ao_texture == model_mat.roughness_texture and model_mat.ao_light_affect == 0.0)
+
+		# --- room surfaces carry seam AO on UV2; nothing painted over them
+		var north_mat: StandardMaterial3D = room.materials["north"]
+		var floor_mat: StandardMaterial3D = room.materials["floor"]
+		check("walls and floor have seam AO", north_mat.ao_enabled and north_mat.ao_on_uv2
+			and north_mat.ao_texture != null and floor_mat.ao_texture != null and floor_mat.ao_light_affect == 0.0)
+		var ao_img := (north_mat.ao_texture as ImageTexture).get_image()
+		var mid_x := ao_img.get_width() / 2
+		check("wall AO: dark at the floor, clear mid-wall",
+			ao_img.get_pixel(mid_x, ao_img.get_height() - 1).r < 0.6 and ao_img.get_pixel(mid_x, ao_img.get_height() / 2).r > 0.95)
+		check("no overlay strips left", room.meshes["north"].find_children("Seam", "", true, false).is_empty())
+
 		var restored_lamp: PlacedItem = null
 		for p in placer.items:
 			if p.item.is_light():
@@ -208,6 +278,20 @@ func run() -> void:
 			restored_ok = restored_ok and orig != null
 		check("restore positions/yaw", restored_ok)
 		check("restored items settle", (await settle(backend, placer)) >= 0)
+
+		# --- a piece against a wall shades it; lifted, it does not
+		var against: PlacedItem = null
+		for p in placer.items:
+			if p.item.id == "segu-shelf":
+				against = p
+		placer.update(1.0 / 60.0)
+		check("shelf against the wall shades it", against != null and against.has_wall_contact())
+		placer.lift(against)
+		placer.update(1.0 / 60.0)
+		check("lifted shelf does not", not against.has_wall_contact())
+		placer.drop()
+		await settle(backend, placer)
+
 		placer.remove(restored_lamp)
 
 		# --- dimension lines follow the cutaway
@@ -218,12 +302,118 @@ func run() -> void:
 		for l in dims.find_children("*", "Label3D", true, false):
 			labels.append((l as Label3D).text)
 		labels.sort()
-		check("dimension labels", labels == ["5.00 m", "6.00 m"], str(labels))
+		check("dimension labels", labels == ["2.70 m", "5.00 m", "6.00 m"], str(labels))
 		dims.update(["south", "east"])
 		check("lines on the camera side", dims._width_line.position.z > 2.5 and dims._depth_line.position.x > 3.0)
 		dims.update(["north", "west"])
 		check("lines flip with the cutaway", dims._width_line.position.z < -2.5 and dims._depth_line.position.x < -3.0)
+		# Upright at the far end of the width line, beside the standing wall.
+		check("height line beside the standing wall", dims._height_line.position.x > 3.0
+			and dims._height_line.position.z < -2.5
+			and is_equal_approx(dims._height_line.position.y, room.wall_height * 0.5), str(dims._height_line.position))
 		dims.queue_free()
+
+		# --- wall height: a piece taller than the room does not fit
+		var tall_box := AABB(Vector3(-0.5, 0, -0.5), Vector3(1.0, 2.1, 1.0))
+		check("2.1 m fits under 2.7 m", room.contains_aabb(tall_box))
+		room.wall_height = 2.0
+		check("2.1 m refused under 2.0 m", not room.contains_aabb(tall_box))
+		room.wall_height = 2.7
+
+		# --- wall segments around windows
+		var run := 6.3
+		check("plain wall is one segment", RoomBuilder._wall_segments(run, 2.7, []).size() == 1)
+		var one: Array[Vector4] = [Vector4(-0.6, 0.6, 0.9, 2.1)]
+		check("one window: 4 segments", RoomBuilder._wall_segments(run, 2.7, one).size() == 4)
+		var two: Array[Vector4] = [Vector4(-0.6, 0.6, 0.9, 2.1), Vector4(1.5, 2.5, 0.9, 2.1)]
+		check("two windows: 7 segments", RoomBuilder._wall_segments(run, 2.7, two).size() == 7)
+		var overlapping: Array[Vector4] = [Vector4(-0.6, 0.6, 0.9, 2.1), Vector4(0.0, 1.2, 0.5, 2.1)]
+		var area := 0.0
+		for r in RoomBuilder._wall_segments(run, 2.7, overlapping):
+			area += r.get_area()
+		# Union of the holes: 1.2 x 1.2 plus the second's 0.6 x 1.6 beyond x = 0.6
+		# and its 0.6 x 0.4 below the first between x = 0 and 0.6.
+		var holes_area := 1.2 * 1.2 + 0.6 * 1.6 + 0.6 * 0.4
+		check("overlapping holes merge", is_equal_approx(area, run * 2.7 - holes_area),
+			"%.4f vs %.4f" % [area, run * 2.7 - holes_area])
+
+		# --- windows and doors
+		var ops := Openings.new()
+		ops.setup(room, catalog)
+		var win_item := catalog.find("window")
+		check("window fixture", win_item != null and win_item.is_opening() and win_item.variant_id == 0
+			and is_equal_approx(win_item.sill, 0.9) and win_item.size.is_equal_approx(Vector3(1.2, 1.2, 0.15)))
+		var w1 := ops.begin(win_item)
+		ops.drag_ray(Vector3(1.0, 1.5, 0.0), Vector3(0, 0, -1))
+		check("window slides along the north wall", w1.wall == "north" and is_equal_approx(w1.offset, 1.0),
+			"%s %.3f" % [w1.wall, w1.offset])
+		check("window drop", ops.drop() and not w1.ghost)
+		var north_body: Node3D = room.meshes["north"].get_node("Body")
+		check("north wall cut around it", north_body.get_child_count() == 4, "%d" % north_body.get_child_count())
+		var w2 := ops.begin(win_item)
+		ops.drag_ray(Vector3(1.5, 1.5, 0.0), Vector3(0, 0, -1))
+		check("overlapping window invalid", not w2.valid)
+		check("overlapping drop refused", not ops.drop())
+		ops.drag_ray(Vector3(2.9, 1.5, 0.0), Vector3(0, 0, -1))
+		check("window clamped clear of the corner", is_equal_approx(w2.offset, 3.0 - 0.6 - Openings.GAP) and w2.valid,
+			"%.3f" % w2.offset)
+		ops.drag_ray(Vector3(0, 5, 0), Vector3(2.9, -5, 0.3).normalized())
+		check("over the floor: nearest wall", w2.wall == "east", w2.wall)
+		check("north wall whole again but for w1", north_body.get_child_count() == 4)
+		check("second window drop", ops.drop())
+		var door := ops.begin(catalog.find("door"))
+		ops.drag_ray(Vector3(0, 1.0, 0), Vector3(0, 0, 1))
+		check("door on the south wall", door.wall == "south" and not door.cuts_wall())
+		check("door drop", ops.drop())
+		var south_body: Node3D = room.meshes["south"].get_node("Body")
+		check("a door cuts nothing", south_body.get_child_count() == 1)
+		room.wall_height = 2.0
+		check("window head above a 2.0 m wall refused", not ops.validate(w1))
+		room.wall_height = 2.7
+		var cancelled := ops.begin(win_item)
+		ops.cancel()
+		check("cancel drops a new one", not room.openings.has(cancelled) and room.openings.size() == 3)
+		ops.lift(w1)
+		ops.drag_ray(Vector3(-1.0, 1.5, 0.0), Vector3(0, 0, -1))
+		check("lifted opening serialises where it was", is_equal_approx(float(ops.to_array()[0]["offset"]), 1.0))
+		ops.cancel()
+		check("cancelled lift goes back", is_equal_approx(w1.offset, 1.0) and not w1.ghost)
+
+		# --- room layout: height, ceiling and openings round-trip
+		room.set_ceiling(true)
+		var room_data := Layout.capture(placer, room, null, ops)
+		check("capture has height and ceiling", is_equal_approx(float(room_data["room"]["height"]), 2.7)
+			and room_data["room"]["ceiling"] == true)
+		check("capture has openings, not as items", room_data["room"]["openings"].size() == 3
+			and room_data["items"].size() == 3)
+		room.set_ceiling(false)
+		ops.clear()
+		check("openings cleared", room.openings.is_empty() and north_body.get_child_count() == 1)
+		# A layout from before any of this still loads, and leaves the room be.
+		Layout.restore({"version": 1, "room": {"width": 6.0, "depth": 5.0}, "items": [], "paint": {}},
+			placer, room, null, ops)
+		check("old layout restores", not room.has_ceiling and room.openings.is_empty())
+		Layout.restore(Layout.from_json(Layout.to_json(room_data)), placer, room, null, ops)
+		check("restore ceiling", room.has_ceiling)
+		check("restore openings", room.openings.size() == 3 and north_body.get_child_count() == 4)
+		check("restore items", placer.items.size() == 3)
+		var restored_walls := []
+		for op in room.openings:
+			restored_walls.append(op.wall)
+		restored_walls.sort()
+		check("restore opening walls", restored_walls == ["east", "north", "south"], str(restored_walls))
+		# A narrower room pulls openings in from the corners.
+		room.width = 1.8
+		ops.setup(room, catalog)
+		var inside_walls := true
+		for op in room.openings:
+			var half := room.run_half(op.wall)
+			inside_walls = inside_walls and op.span().x >= -half and op.span().y <= half
+		check("shrunk wall keeps openings inside", room.openings.size() == 3 and inside_walls)
+		room.width = 6.0
+		ops.clear()
+		room.set_ceiling(false)
+		await settle(backend, placer)
 
 		# --- restoring into a narrower room keeps every piece inside the walls.
 		# The walls' bodies are not rebuilt here: clamping and validation are

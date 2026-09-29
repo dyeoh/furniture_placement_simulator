@@ -1,17 +1,21 @@
 class_name Layout
 extends RefCounted
 
-## The room as data: which items, where, and what colour the walls are.
+## The room as data: its size and ceiling, its windows and doors, which items,
+## where, and what colour the walls are.
 ##
 ## This is the contract with the outside world. The host page receives it on
 ## every change, a backend swap rebuilds from it so the A/B compares the same
 ## room, and the tests round-trip it. Uploaded models serialise by id like
 ## anything else; restoring one needs the upload to still be in the catalogue.
+## Fields added since version 1 (room height, ceiling, openings) are optional
+## on restore, so an older capture still loads as the room it was.
 
 const VERSION := 1
 
 
-static func capture(placer: Placer, room: RoomBuilder, lighting: Lighting = null) -> Dictionary:
+static func capture(placer: Placer, room: RoomBuilder, lighting: Lighting = null,
+		openings: Openings = null) -> Dictionary:
 	var items := []
 	for p in placer.items:
 		if p.state == PlacedItem.State.GHOST:
@@ -22,7 +26,9 @@ static func capture(placer: Placer, room: RoomBuilder, lighting: Lighting = null
 		paint[s] = "#" + room.paint_color(s).to_html(false)
 	var data := {
 		"version": VERSION,
-		"room": {"width": room.width, "depth": room.depth},
+		"room": {"width": room.width, "depth": room.depth, "height": room.wall_height,
+			"ceiling": room.has_ceiling,
+			"openings": openings.to_array() if openings != null else []},
 		"items": items,
 		"paint": paint,
 	}
@@ -33,8 +39,15 @@ static func capture(placer: Placer, room: RoomBuilder, lighting: Lighting = null
 
 ## Rebuild from a capture. Items are committed straight to bodies -- they drop
 ## the couple of centimetres and settle, which is also what proves the layout
-## was physically stable.
-static func restore(data: Dictionary, placer: Placer, room: RoomBuilder, lighting: Lighting = null) -> void:
+## was physically stable. The room's size is the caller's job (a new size
+## means new wall bodies); its ceiling and openings are restored here.
+static func restore(data: Dictionary, placer: Placer, room: RoomBuilder, lighting: Lighting = null,
+		openings: Openings = null) -> void:
+	var r: Dictionary = data.get("room", {}) if data.get("room") is Dictionary else {}
+	if r.has("ceiling"):
+		room.set_ceiling(bool(r["ceiling"]))
+	if openings != null and r.get("openings") is Array:
+		openings.restore(r["openings"])
 	placer.clear()
 	for d in data.get("items", []):
 		if not (d is Dictionary):

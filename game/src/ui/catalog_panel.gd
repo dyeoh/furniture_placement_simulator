@@ -23,7 +23,8 @@ signal export_pressed
 signal light_changed(group: String, key: String, value: Variant)
 signal lamp_changed(key: String, value: Variant)
 signal add_lamp_pressed
-signal room_size_changed(width: float, depth: float)
+signal room_size_changed(width: float, depth: float, height: float)
+signal ceiling_toggled(on: bool)
 
 enum Tool { PLACE, PAINT, WALK, LIGHT }
 const TOOL_NAMES := ["Place", "Paint", "Walk", "Light"]
@@ -55,6 +56,9 @@ var _light_controls: Dictionary = {}
 var _syncing := false
 var _room_w: SpinBox
 var _room_d: SpinBox
+var _room_h: SpinBox
+var _ceiling_btn: CheckButton
+var _rotate_btn: Button
 
 
 func build(p_catalog: Catalog, on_web: bool) -> void:
@@ -105,6 +109,24 @@ func build(p_catalog: Catalog, on_web: bool) -> void:
 	var unit := Label.new()
 	unit.text = "m"
 	size_row.add_child(unit)
+	# --- wall height, and whether there is a ceiling to keep the sun out
+	var height_row := HBoxContainer.new()
+	root.add_child(height_row)
+	var height_label := Label.new()
+	height_label.text = "Height"
+	height_row.add_child(height_label)
+	_room_h = _metres(height_row, 2.7, RoomBuilder.MIN_HEIGHT, RoomBuilder.MAX_HEIGHT, 0.05)
+	var hunit := Label.new()
+	hunit.text = "m"
+	height_row.add_child(hunit)
+	_ceiling_btn = CheckButton.new()
+	_ceiling_btn.text = "Ceiling"
+	_ceiling_btn.custom_minimum_size = BTN_MIN
+	_ceiling_btn.tooltip_text = "A ceiling blocks the sun: light comes in through the windows"
+	_ceiling_btn.toggled.connect(func(v: bool):
+		if not _syncing:
+			ceiling_toggled.emit(v))
+	height_row.add_child(_ceiling_btn)
 
 	# --- selected item (Place and Light tools): shared by furniture and lamps
 	_selected_box = VBoxContainer.new()
@@ -115,6 +137,7 @@ func build(p_catalog: Catalog, on_web: bool) -> void:
 	var row := HBoxContainer.new()
 	_selected_box.add_child(row)
 	var rot := Button.new()
+	_rotate_btn = rot
 	rot.text = "Rotate"
 	rot.custom_minimum_size = BTN_MIN
 	rot.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -224,7 +247,9 @@ func build(p_catalog: Catalog, on_web: bool) -> void:
 	_slider(_light_box, "Direction", "sun/azimuth", 0.0, 360.0, 330.0, func(v): light_changed.emit("sun", "azimuth", v))
 	_slider(_light_box, "Brightness", "sun/energy", 0.0, 1.0, 0.5, func(v): light_changed.emit("sun", "energy", v))
 	_slider(_light_box, "Warmth", "sun/warmth", 0.0, 1.0, 0.35, func(v): light_changed.emit("sun", "warmth", v))
-	_slider(_light_box, "Ambient", "ambient/energy", 0.0, 1.0, 0.3, func(v): light_changed.emit("ambient", "energy", v))
+	# How much light the room's surfaces bounce around. The key keeps its old
+	# name so saved layouts still restore it.
+	_slider(_light_box, "Bounce", "ambient/energy", 0.0, 1.0, 0.3, func(v): light_changed.emit("ambient", "energy", v))
 	_toggle(_light_box, "Ceiling light", "ceiling/on", false, func(v): light_changed.emit("ceiling", "on", v))
 	_slider(_light_box, "Brightness", "ceiling/energy", 0.0, 1.0, 0.5, func(v): light_changed.emit("ceiling", "energy", v))
 	_slider(_light_box, "Warmth", "ceiling/warmth", 0.0, 1.0, 0.6, func(v): light_changed.emit("ceiling", "warmth", v))
@@ -260,25 +285,27 @@ func build(p_catalog: Catalog, on_web: bool) -> void:
 	root.add_child(_cart_btn)
 
 
-func _metres(parent: Control, value: float) -> SpinBox:
+func _metres(parent: Control, value: float, lo := 2.0, hi := 12.0, step := 0.1) -> SpinBox:
 	var sb := SpinBox.new()
-	sb.min_value = 2.0
-	sb.max_value = 12.0
-	sb.step = 0.1
+	sb.min_value = lo
+	sb.max_value = hi
+	sb.step = step
 	sb.value = value
 	sb.custom_minimum_size = BTN_MIN
 	sb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	sb.value_changed.connect(func(_v: float):
 		if not _syncing:
-			room_size_changed.emit(_room_w.value, _room_d.value))
+			room_size_changed.emit(_room_w.value, _room_d.value, _room_h.value))
 	parent.add_child(sb)
 	return sb
 
 
-func set_room_size(width: float, depth: float) -> void:
+func set_room_size(width: float, depth: float, height: float, ceiling: bool) -> void:
 	_syncing = true
 	_room_w.value = width
 	_room_d.value = depth
+	_room_h.value = height
+	_ceiling_btn.button_pressed = ceiling
 	_syncing = false
 
 
@@ -376,18 +403,37 @@ func set_paint_color(color: Color) -> void:
 func refresh_items() -> void:
 	for c in _items_box.get_children():
 		c.queue_free()
+	var architecture: Array[FurnitureItem] = []
 	for it in catalog.items:
 		if it.is_light():
 			continue   # fixtures are added from the Light tool
-		var b := Button.new()
-		var dims := "%d × %d × %d cm" % [roundi(it.size.x * 100), roundi(it.size.z * 100), roundi(it.size.y * 100)]
-		b.text = "%s\n%s%s" % [it.name, dims, "  (est.)" if it.estimated else ""]
-		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
-		b.custom_minimum_size = Vector2(0, 48)
-		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		var item := it
-		b.pressed.connect(func(): item_chosen.emit(item))
-		_items_box.add_child(b)
+		if it.is_opening():
+			architecture.append(it)
+			continue
+		_item_button(it)
+	if architecture.is_empty():
+		return
+	var heading := Label.new()
+	heading.text = "Architecture"
+	_items_box.add_child(heading)
+	for it in architecture:
+		_item_button(it)
+
+
+func _item_button(it: FurnitureItem) -> void:
+	var b := Button.new()
+	var dims := "%d × %d × %d cm" % [roundi(it.size.x * 100), roundi(it.size.z * 100), roundi(it.size.y * 100)]
+	if it.is_opening():
+		# Width x height, and where it starts: depth is the wall's.
+		dims = "%d × %d cm" % [roundi(it.size.x * 100), roundi(it.size.y * 100)]
+		if it.sill > 0.0:
+			dims += ", sill %d cm" % roundi(it.sill * 100)
+	b.text = "%s\n%s%s" % [it.name, dims, "  (est.)" if it.estimated else ""]
+	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	b.custom_minimum_size = Vector2(0, 48)
+	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	b.pressed.connect(func(): item_chosen.emit(it))
+	_items_box.add_child(b)
 
 
 func set_tool(tool: int) -> void:
@@ -414,6 +460,7 @@ func show_selected(p: PlacedItem) -> void:
 		_selected_box.visible = false
 		return
 	_selected_box.visible = true
+	_rotate_btn.disabled = false
 	_selected_label.text = p.item.name + ("" if p.valid else "  — doesn't fit here")
 	if p.item.is_light():
 		_finish_opt.visible = false
@@ -437,6 +484,18 @@ func show_selected(p: PlacedItem) -> void:
 	_finish_opt.visible = idx > 0
 	if idx > 0:
 		_finish_opt.select(sel)
+
+
+## A window or door: nothing to rotate, no timber, no light -- just remove.
+func show_opening(op: WallOpening) -> void:
+	if op == null:
+		_selected_box.visible = false
+		return
+	_selected_box.visible = true
+	_rotate_btn.disabled = true
+	_selected_label.text = op.item.name + ("" if op.valid else "  — doesn't fit here")
+	_finish_opt.visible = false
+	_lamp_box.visible = false
 
 
 ## A drawn tick for the selected swatch. Drawn rather than typed: the web

@@ -49,7 +49,16 @@ static func device_looks_slow() -> bool:
 func apply(viewport: Viewport, lighting: Lighting) -> void:
 	viewport.scaling_3d_scale = RENDER_SCALE_LOW if low else 1.0
 	viewport.positional_shadow_atlas_size = 1024 if low else 4096
+	# One shadow per quadrant: each shadow-casting light gets a quarter of
+	# the atlas (2048 px at high) instead of a sixteenth. The Compatibility
+	# renderer has no soft-shadow filtering (blur and filter quality are
+	# ignored), so resolution is the only thing that smooths the stair-steps.
+	# Four slots cover the budget: the ceiling light plus
+	# Showroom.LAMP_SHADOWS lamps.
+	for q in 4:
+		viewport.set_positional_shadow_atlas_quadrant_subdiv(q, Viewport.SHADOW_ATLAS_QUADRANT_SUBDIV_1)
 	lighting.set_low_spec(low)
+	PlacedItem.shadows_allowed = not low
 
 
 func label() -> String:
