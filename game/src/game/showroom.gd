@@ -66,6 +66,11 @@ var _pending_layout: Dictionary = {}
 ## first two, for pinch zoom. The web build synthesises no magnify gesture.
 var _fingers: Dictionary = {}
 var _pinch_span := 0.0
+## Benchmark (BenchHooks): a walk intent that replaces the keys, and the
+## time spent in backend.step() since the bench last read it.
+var bench_intent: Variant = null
+var bench_physics_usec := 0
+var bench_physics_steps := 0
 
 
 func _ready() -> void:
@@ -84,6 +89,7 @@ func _ready() -> void:
 		quality.apply(get_viewport(), lighting)
 		_sync_light_sources())
 	bridge.setup({"quality": quality.label()})
+	BenchHooks.install(self)
 	_start_backend()
 
 
@@ -630,6 +636,8 @@ func _input_walk(event: InputEvent) -> void:
 
 
 func _walk_intent() -> Vector3:
+	if bench_intent != null:
+		return bench_intent
 	var v := Vector3.ZERO
 	if Input.is_key_pressed(KEY_W) or Input.is_key_pressed(KEY_UP): v.z -= 1
 	if Input.is_key_pressed(KEY_S) or Input.is_key_pressed(KEY_DOWN): v.z += 1
@@ -648,7 +656,10 @@ func _walk_intent() -> Vector3:
 func _physics_process(dt: float) -> void:
 	if _tool == CatalogPanel.Tool.WALK:
 		shopper.step(_walk_intent(), dt)
+	var t0 := Time.get_ticks_usec()
 	backend.step(dt)
+	bench_physics_usec += Time.get_ticks_usec() - t0
+	bench_physics_steps += 1
 	placer.update(dt)
 
 

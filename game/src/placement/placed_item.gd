@@ -126,7 +126,7 @@ func build_visual(parent: Node3D, color: Color) -> void:
 	if item.is_light():
 		_omni = OmniLight3D.new()
 		_omni.omni_range = LIGHT_RANGE
-		_omni.omni_attenuation = 1.2
+		_omni.omni_attenuation = 1.2 * Lighting.gain("falloff")
 		_omni.shadow_enabled = false
 		_omni.shadow_blur = 2.0
 		# At the bulb, inside the hollow shade, which it lights from within.
@@ -184,7 +184,7 @@ func apply_light() -> void:
 	if _omni == null:
 		return
 	_omni.visible = bool(light["on"])
-	_omni.light_energy = float(light["energy"]) * LIGHT_MAX_ENERGY
+	_omni.light_energy = float(light["energy"]) * LIGHT_MAX_ENERGY * Lighting.gain("lamp")
 	_omni.light_color = Lighting.warmth_color(float(light["warmth"]))
 	# A lit bulb glows, and the fabric round it a little; off, neither does.
 	for pair in [[_bulb_mat, BULB_GLOW], [_shade_mat, SHADE_GLOW]]:
@@ -193,7 +193,7 @@ func apply_light() -> void:
 			continue
 		m.emission_enabled = bool(light["on"])
 		m.emission = _omni.light_color
-		m.emission_energy_multiplier = float(light["energy"]) * float(pair[1])
+		m.emission_energy_multiplier = float(light["energy"]) * float(pair[1]) * Lighting.gain("glow")
 
 
 ## Darken the wall behind the piece: [param inward] is the wall's normal into

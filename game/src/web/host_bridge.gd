@@ -12,6 +12,7 @@ extends RefCounted
 ## Inbound (host -> sim):  {type:"catalog", finishes:{}, items:[...]}
 ##                         {type:"layout", ...Layout.capture() shape...}
 ##                         {type:"clear"}
+##                         {type:"bench", op:...}        benchmark hooks (showroom.gd)
 ## Outbound (sim -> host): {type:"ready"}
 ##                         {type:"layout", ...}          on every change
 ##                         {type:"add_to_cart", items:[{variant_id, quantity}]}
@@ -22,10 +23,18 @@ signal catalog_received(data: Dictionary)
 signal layout_received(data: Dictionary)
 signal clear_requested
 signal model_received(bytes: PackedByteArray, filename: String)
+## tests/web/bench drives the view through this; same contract as the
+## three.js build's src/bench/hooks.ts.
+signal bench_requested(data: Dictionary)
 
 var _on_message: JavaScriptObject
 var _on_file: JavaScriptObject
 var _allowed_origin := ""
+## At top level window.parent is this window, so every post comes straight
+## back in: a "layout" would be restored, re-posted and restored again,
+## forever. Posts made to ourselves are counted here and their echoes dropped.
+var _top_level := false
+var _echoes: Dictionary = {}
 
 
 static func is_web() -> bool:
@@ -53,6 +62,7 @@ func setup(ready_extra: Dictionary = {}) -> void:
 	# any parent is accepted, which is fine for a local preview and not for a
 	# storefront -- the Liquid section always passes it.
 	_allowed_origin = query_param("host")
+	_top_level = bool(JavaScriptBridge.eval("window.parent === window", true))
 	_on_message = JavaScriptBridge.create_callback(_message)
 	var window := JavaScriptBridge.get_interface("window")
 	window.addEventListener("message", _on_message)
@@ -91,7 +101,10 @@ func post(msg: Dictionary) -> void:
 		return
 	# "*" because the Pages build does not know which storefront embeds it; the
 	# receiving side checks event.origin against the iframe's own URL.
-	parent.postMessage(JSON.stringify(msg), "*")
+	var text := JSON.stringify(msg)
+	if _top_level:
+		_echoes[text] = int(_echoes.get(text, 0)) + 1
+	parent.postMessage(text, "*")
 
 
 func pick_file() -> void:
@@ -110,6 +123,11 @@ func _message(args: Array) -> void:
 	var raw = ev.data
 	if not (raw is String):
 		return
+	if _echoes.has(raw):
+		_echoes[raw] = int(_echoes[raw]) - 1
+		if int(_echoes[raw]) <= 0:
+			_echoes.erase(raw)
+		return
 	var data = JSON.parse_string(raw)
 	if not (data is Dictionary):
 		return
@@ -120,6 +138,8 @@ func _message(args: Array) -> void:
 			layout_received.emit(data)
 		"clear":
 			clear_requested.emit()
+		"bench":
+			bench_requested.emit(data)
 
 
 func _file_picked(args: Array) -> void:

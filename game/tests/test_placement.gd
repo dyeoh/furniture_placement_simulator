@@ -221,20 +221,21 @@ func run() -> void:
 		lighting.from_dict({"sun": {"energy": 0.5}, "ambient": {"energy": 0.3}, "ceiling": {"on": false}})
 		lighting.set_room(false, 0.0, 30.0)
 		lighting.set_lamps(0.0, 0.7)
-		check("open room, sun 0.5: the old ambient", is_equal_approx(lighting.env.ambient_light_energy, 0.3),
+		# Energies are the bounce model's, times the calibration gain (Lighting.GAINS).
+		check("open room, sun 0.5: the old ambient", is_equal_approx(lighting.env.ambient_light_energy, 0.3 * Lighting.gain("ambient")),
 			"%.3f" % lighting.env.ambient_light_energy)
 		lighting.set_room(true, 0.0, 30.0)
-		check("covered, no windows: dark", is_equal_approx(lighting.env.ambient_light_energy, Lighting.AMBIENT_FLOOR)
+		check("covered, no windows: dark", is_equal_approx(lighting.env.ambient_light_energy, Lighting.AMBIENT_FLOOR * Lighting.gain("ambient"))
 			and is_equal_approx(lighting.fill.light_energy, 0.0), "%.3f" % lighting.env.ambient_light_energy)
 		lighting.set_room(true, 3.0, 30.0)
 		var windowed := lighting.env.ambient_light_energy
-		check("a window lets daylight in", windowed > Lighting.AMBIENT_FLOOR * 2.0 and windowed < 0.3, "%.3f" % windowed)
+		check("a window lets daylight in", windowed > Lighting.AMBIENT_FLOOR * 2.0 * Lighting.gain("ambient") and windowed < 0.3 * Lighting.gain("ambient"), "%.3f" % windowed)
 		lighting.set_sun("energy", 0.0)
 		lighting.set_room(true, 3.0, 30.0)
-		check("no sun, no lamps: dark", is_equal_approx(lighting.env.ambient_light_energy, Lighting.AMBIENT_FLOOR))
+		check("no sun, no lamps: dark", is_equal_approx(lighting.env.ambient_light_energy, Lighting.AMBIENT_FLOOR * Lighting.gain("ambient")))
 		lighting.set_lamps(0.8, 0.9)
 		var col := lighting.env.ambient_light_color
-		check("a lamp brings warm bounce", lighting.env.ambient_light_energy > Lighting.AMBIENT_FLOOR
+		check("a lamp brings warm bounce", lighting.env.ambient_light_energy > Lighting.AMBIENT_FLOOR * Lighting.gain("ambient")
 			and col.r > col.b + 0.2, "%.3f %s" % [lighting.env.ambient_light_energy, col])
 		lighting.set_lamps(0.0, 0.7)
 		lighting.set_room(false, 0.0, 30.0)

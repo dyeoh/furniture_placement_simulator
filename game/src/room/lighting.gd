@@ -45,6 +45,39 @@ const DAYLIGHT := Color(0.78, 0.78, 0.79)
 ## The sky-ish fill light at the default sun, scaled with daylight in.
 const FILL_ENERGY := 0.12
 
+## Calibration gains, matched against the three.js build so both stacks can be
+## compared on the same picture (tests/web/bench/calibrate.mjs). They scale
+## what each light puts out, not the settings: a saved layout's sliders mean
+## the same after a recalibration. `?cal=sun:0.8,ambient:1.2` overrides them
+## at runtime on the web, which is how the search runs without re-exporting.
+##
+## "falloff" scales the omni lights' attenuation exponent. The Compatibility
+## renderer lights in sRGB space, so a light's d^-a falloff reaches the screen
+## as is, where a linear-space renderer's sRGB encode flattens it to about
+## d^-(a/2.2): the same lamp makes a hard, bright pool here and an even glow
+## there. No brightness gain can match a different curve; this can.
+##
+## Values from the 2026-09 calibration (mean ΔE2000 day 4.3, night ~9, walk
+## ~13; the rest of the night gap is the sRGB-space light sum itself). The
+## ceiling light is set so switching it on changes the room as much as it
+## does in the three.js build -- about 5% of its old output.
+const GAINS := {
+	"sun": 0.328, "ambient": 0.494, "fill": 3.468, "ceiling": 0.05, "lamp": 0.5, "glow": 1.0,
+	"falloff": 0.45, "exposure": 1.15,
+}
+static var _gains: Dictionary = {}
+
+
+static func gain(key: String) -> float:
+	if _gains.is_empty():
+		_gains = GAINS.duplicate()
+		for part in HostBridge.query_param("cal").split(",", false):
+			var kv := part.split(":")
+			if kv.size() == 2 and _gains.has(kv[0]):
+				_gains[kv[0]] = float(kv[1])
+	return float(_gains[key])
+
+
 const DEFAULTS := {
 	"sun": {"elevation": 55.0, "azimuth": 330.0, "energy": 0.5, "warmth": 0.35},
 	"ambient": {"energy": 0.3},
@@ -85,7 +118,7 @@ func setup(parent: Node3D, room_height: float) -> void:
 	parent.add_child(sun)
 	fill = DirectionalLight3D.new()
 	fill.rotation = Vector3(deg_to_rad(-30), deg_to_rad(150), 0)
-	fill.light_energy = 0.12
+	fill.light_energy = 0.12 * gain("fill")
 	parent.add_child(fill)
 
 	env = Environment.new()
@@ -109,14 +142,14 @@ func setup(parent: Node3D, room_height: float) -> void:
 	# Reflections stay on the sky, dimmed with the bounce (see _apply_bounce).
 	env.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
 	env.tonemap_mode = Environment.TONE_MAPPER_AGX
-	env.tonemap_exposure = 1.15
+	env.tonemap_exposure = gain("exposure")
 	var we := WorldEnvironment.new()
 	we.environment = env
 	parent.add_child(we)
 
 	ceiling_light = OmniLight3D.new()
 	ceiling_light.omni_range = 9.0
-	ceiling_light.omni_attenuation = 1.0
+	ceiling_light.omni_attenuation = 1.0 * gain("falloff")
 	ceiling_light.shadow_enabled = true
 	ceiling_light.shadow_blur = 2.0
 	parent.add_child(ceiling_light)
@@ -169,11 +202,11 @@ func set_ceiling(key: String, value: Variant) -> void:
 func apply() -> void:
 	var s: Dictionary = settings["sun"]
 	sun.rotation = Vector3(-deg_to_rad(float(s["elevation"])), deg_to_rad(float(s["azimuth"])), 0)
-	sun.light_energy = float(s["energy"]) * SUN_MAX
+	sun.light_energy = float(s["energy"]) * SUN_MAX * gain("sun")
 	sun.light_color = warmth_color(float(s["warmth"]))
 	var c: Dictionary = settings["ceiling"]
 	ceiling_light.visible = bool(c["on"])
-	ceiling_light.light_energy = float(c["energy"]) * CEILING_MAX
+	ceiling_light.light_energy = float(c["energy"]) * CEILING_MAX * gain("ceiling")
 	ceiling_light.light_color = warmth_color(float(c["warmth"]))
 	_apply_bounce()
 	changed.emit()
@@ -224,10 +257,10 @@ func _apply_bounce() -> void:
 			+ warmth_color(_lamp_warmth) * lamp_e) / bounce
 	var energy := float(settings["ambient"]["energy"]) * AMBIENT_MAX * bounce * AMBIENT_GAIN
 	env.ambient_light_color = col
-	env.ambient_light_energy = maxf(AMBIENT_FLOOR, energy)
+	env.ambient_light_energy = maxf(AMBIENT_FLOOR, energy) * gain("ambient")
 	# The fill is skylight, so only as much of it as daylight gets in; and
 	# reflections of a bright sky in a dark room would make timber glow.
-	fill.light_energy = FILL_ENERGY * day / 0.5
+	fill.light_energy = FILL_ENERGY * day / 0.5 * gain("fill")
 	_sky_mat.energy_multiplier = clampf(bounce / 0.5, 0.05, 1.0)
 
 func to_dict() -> Dictionary:

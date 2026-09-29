@@ -115,6 +115,27 @@ body {
 	text-align: center;
 }
 		</style>
+		<script>
+// Bench probe (tests/web/bench): remember every WebAssembly.Memory this page
+// creates or instantiates with, so the bench page can report wasm memory for
+// both builds the same way. Costs nothing: a Set and two wrapped functions.
+(function () {
+	var mems = window.__wasmMemories = new Set();
+	function note(result, imports) {
+		try {
+			var inst = result && (result.instance || result);
+			var ex = inst && inst.exports;
+			if (ex) for (var k in ex) if (ex[k] instanceof WebAssembly.Memory) mems.add(ex[k]);
+			if (imports) for (var m in imports) for (var n in imports[m]) if (imports[m][n] instanceof WebAssembly.Memory) mems.add(imports[m][n]);
+		} catch (e) { /* never break the boot over a probe */ }
+		return result;
+	}
+	var inst = WebAssembly.instantiate, stream = WebAssembly.instantiateStreaming;
+	WebAssembly.instantiate = function (src, imports) { return inst.apply(this, arguments).then(function (r) { return note(r, imports); }); };
+	if (stream) WebAssembly.instantiateStreaming = function (src, imports) { return stream.apply(this, arguments).then(function (r) { return note(r, imports); }); };
+	window.__wasmMemoryBytes = function () { var t = 0; mems.forEach(function (m) { t += m.buffer.byteLength; }); return t; };
+})();
+		</script>
 		$GODOT_HEAD_INCLUDE
 	</head>
 	<body>
