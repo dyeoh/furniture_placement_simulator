@@ -74,8 +74,8 @@ jobs:
           source ~/emsdk/emsdk_env.sh
           cd engine/box3d-godot/godot
           scons -j"$(nproc)" platform=web threads=no target=template_release
-          ls -la demo/bin/*.wasm
-          cp demo/bin/libbox3d_godot.web.*.wasm ../../../game/bin/
+          ls -la demo/addons/box3d/bin/*.wasm
+          cp demo/addons/box3d/bin/libbox3d_godot.web.*.wasm ../../../game/bin/
 
       - name: Cache Godot and export templates
         id: cache-godot

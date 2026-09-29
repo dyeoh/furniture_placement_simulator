@@ -36,7 +36,7 @@ Requires Godot 4.7.1, `scons` and `cmake` (`brew install scons cmake`).
 git clone --recurse-submodules git@github.com:dyeoh/furniture_placement_simulator.git
 cd furniture_placement_simulator/engine/box3d-godot/godot
 scons platform=macos arch=arm64 target=editor        # adjust for your platform
-cp -R demo/bin/libbox3d_godot.macos.editor.framework ../../../game/bin/
+cp -R demo/addons/box3d/bin/libbox3d_godot.macos.editor.framework ../../../game/bin/
 cd ../../.. && godot --path game
 ```
 
@@ -113,7 +113,7 @@ export templates (~1.2 GB), then
 
 ```sh
 cd engine/box3d-godot/godot && scons platform=web threads=no target=template_release
-cp demo/bin/libbox3d_godot.web.*.wasm ../../../game/bin/
+cp demo/addons/box3d/bin/libbox3d_godot.web.*.wasm ../../../game/bin/
 cd ../../.. && godot --headless --path game --export-release Web ../web/index.html
 ```
 
