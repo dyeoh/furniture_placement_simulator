@@ -2,7 +2,7 @@
 // three.js builds (same layout, same camera, UI hidden with ?ui=0) and
 // compares them block by block in CIELAB (ΔE2000).
 //
-//   node tests/web/bench/compare-look.mjs [--godot <dir>] [--three <dir>] [--out <dir>] [--cal key:v,...]
+//   node tests/web/bench/compare-look.mjs [--godot <dir>] [--three <dir>] [--out <dir>] [--cal key:v,...] [--perf key:v;...]
 //
 // Prints mean and 90th-percentile ΔE per scene, plus per-surface means for the
 // regions named below, and saves both screenshots and a difference heat map.
@@ -170,7 +170,8 @@ async function main() {
   const summary = {};
   for (const scene of SCENES) {
     const cal = opt('cal', '');
-    const g = await capture(browser, `${srv.base}/godot/?ui=0&quality=high${cal ? `&cal=${cal}` : ''}`, scene);
+    const perf = opt('perf', '');
+    const g = await capture(browser, `${srv.base}/godot/?ui=0&quality=high${cal ? `&cal=${cal}` : ''}${perf ? `&perf=${perf}` : ''}`, scene);
     const t = await capture(browser, `${srv.base}/three/?ui=0&quality=high&physics=box3d`, scene);
     fs.writeFileSync(path.join(OUT, `${scene.name}-godot.png`), g.png);
     fs.writeFileSync(path.join(OUT, `${scene.name}-three.png`), t.png);

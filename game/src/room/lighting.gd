@@ -78,6 +78,33 @@ static func gain(key: String) -> float:
 	return float(_gains[key])
 
 
+## Rendering-cost switches, same idea as GAINS: defaults here, `?perf=key:v`
+## overrides on the web for A/B runs (tests/web/bench).
+##   sun    "pssm4" | "ortho"   directional shadow: 4 cascades, or 1 map (the
+##                             room fits in one; the three.js build uses 1)
+##   omni   "2048" | "1024"    px per positional shadow (quality.gd)
+##   lamp_range  metres a floor lamp reaches (PlacedItem)
+##   lamps  "2" | "1"          lamps that cast shadows on a touch device
+##
+## Defaults from the 2026-09 A/B (docs/benchmarks.md): one sun map is +32%
+## in the walk and +20% with 150 pieces on desktop, with no visible change;
+## 1024 px positional shadows match the three.js build; a phone shadows one
+## lamp. A shorter lamp range gained nothing and changed the look.
+const PERF := {"sun": "ortho", "omni": "1024", "lamp_range": "5.0", "lamps": "1"}
+static var _perf: Dictionary = {}
+
+
+static func perf(key: String) -> String:
+	if _perf.is_empty():
+		_perf = PERF.duplicate()
+		# "," or ";" between pairs: the bench page lists targets with commas.
+		for part in HostBridge.query_param("perf").replace(";", ",").split(",", false):
+			var kv := part.split(":")
+			if kv.size() == 2 and _perf.has(kv[0]):
+				_perf[kv[0]] = kv[1]
+	return str(_perf[key])
+
+
 const DEFAULTS := {
 	"sun": {"elevation": 55.0, "azimuth": 330.0, "energy": 0.5, "warmth": 0.35},
 	"ambient": {"energy": 0.3},
@@ -112,6 +139,8 @@ static func warmth_color(w: float) -> Color:
 func setup(parent: Node3D, room_height: float) -> void:
 	sun = DirectionalLight3D.new()
 	sun.shadow_enabled = true
+	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL if perf("sun") == "ortho" \
+		else DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS
 	sun.shadow_blur = 1.5
 	sun.light_angular_distance = 1.0
 	sun.directional_shadow_max_distance = 25.0

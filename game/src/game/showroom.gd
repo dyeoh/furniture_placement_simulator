@@ -274,6 +274,14 @@ func _sync_light_sources() -> void:
 	_pick_lamp_shadows()
 
 
+## Shadowed lamps: each is a cube map (six passes) plus an extra lighting pass
+## over everything it reaches, which a phone feels. Lighting.perf("lamps").
+func _lamp_shadow_budget() -> int:
+	if _touch != null and Lighting.perf("lamps") == "1":
+		return 1
+	return LAMP_SHADOWS
+
+
 ## Give shadows to the LAMP_SHADOWS lit lamps nearest the camera.
 func _pick_lamp_shadows() -> void:
 	var eye := _camera.global_position if _camera != null else Vector3.ZERO
@@ -286,7 +294,7 @@ func _pick_lamp_shadows() -> void:
 	for p in placer.items:
 		if p.item.is_light():
 			var rank := lit.find(p)
-			p.set_light_shadow(rank >= 0 and rank < LAMP_SHADOWS)
+			p.set_light_shadow(rank >= 0 and rank < _lamp_shadow_budget())
 
 
 func _capture() -> Dictionary:

@@ -169,6 +169,9 @@ func mover_move(id: int, position: Vector3, velocity: Vector3, dt: float,
 	var fn: Vector3 = m.get_floor_normal()
 	result.ground_normal = fn if fn.length_squared() > 1e-6 else up
 
+	if not result.detail:
+		result.cast_fraction = 1.0
+		return
 	var planes: Array = m.get_last_collisions()
 	var normals := PackedVector3Array()
 	var touched: Array = []

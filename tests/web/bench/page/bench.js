@@ -157,6 +157,7 @@
         frames: d.length, fps: round(1000 / mean, 1), p50: round(p50, 2), p95: round(pct(d, 0.95), 2),
         p99: round(pct(d, 0.99), 2), slowPct: round(100 * d.filter(function (x) { return x > slowAt; }).length / Math.max(d.length, 1), 1),
         physicsMs: st ? round(st.physics_ms, 3) : null, drawCalls: st ? st.calls : null,
+        renderCpuMs: st && st.render_cpu_ms != null ? round(st.render_cpu_ms, 2) : null,
         jsHeapMB: mem == null ? null : round(mem / 1048576, 1), wasmMB: wasm == null ? null : round(wasm / 1048576, 1),
       };
       if (sc.name === 'walk') send(sim, { type: 'bench', op: 'orbit' });

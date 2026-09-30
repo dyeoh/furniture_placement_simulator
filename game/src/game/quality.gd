@@ -48,7 +48,9 @@ static func device_looks_slow() -> bool:
 
 func apply(viewport: Viewport, lighting: Lighting) -> void:
 	viewport.scaling_3d_scale = RENDER_SCALE_LOW if low else 1.0
-	viewport.positional_shadow_atlas_size = 1024 if low else 4096
+	# One shadow per quadrant, so each gets a quarter of the atlas's edge.
+	var per_shadow := 2048 if Lighting.perf("omni") == "2048" else 1024
+	viewport.positional_shadow_atlas_size = 1024 if low else per_shadow * 2
 	# One shadow per quadrant: each shadow-casting light gets a quarter of
 	# the atlas (2048 px at high) instead of a sixteenth. The Compatibility
 	# renderer has no soft-shadow filtering (blur and filter quality are

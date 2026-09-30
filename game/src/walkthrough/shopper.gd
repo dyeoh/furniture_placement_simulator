@@ -52,6 +52,9 @@ func setup(p_backend: PhysicsBackend, p_placer: Placer, spawn_feet: Vector3) -> 
 	velocity = Vector3.ZERO
 	carrying = null
 	_id = backend.mover_create(RADIUS, HEIGHT, Layers.SOLID)
+	# Only position, velocity and grounded are read here: skip the contact
+	# plane report, a per-move allocation (MoveResult.detail).
+	_result.detail = false
 
 
 func release() -> void:

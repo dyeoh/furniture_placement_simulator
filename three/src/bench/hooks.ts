@@ -44,11 +44,14 @@ export function installBenchHooks(sim: Showroom): void {
           physics_steps: sim.physicsSteps,
           ...sim.renderStats(),
           js_heap: mem?.usedJSHeapSize ?? null,
+          render_cpu_ms: sim.renderMs / Math.max(sim.renderFrames, 1),
           items: sim.placer.items.length,
           settling: sim.placer.anySettling(),
         });
         sim.physicsMs = 0;
         sim.physicsSteps = 0;
+        sim.renderMs = 0;
+        sim.renderFrames = 0;
         break;
       }
     }

@@ -27,6 +27,8 @@ static func install(p_showroom: Node) -> BenchHooks:
 	hooks.ui_hidden = HostBridge.query_param("ui") == "0"
 	p_showroom.add_child(hooks)
 	p_showroom.bridge.bench_requested.connect(hooks._on_bench)
+	# Render timing, for telling a CPU-bound phone from a GPU-bound one.
+	RenderingServer.viewport_set_measure_render_time(p_showroom.get_viewport().get_viewport_rid(), true)
 	return hooks
 
 
@@ -72,6 +74,11 @@ func _on_bench(m: Dictionary) -> void:
 				"calls": RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME),
 				"triangles": RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_PRIMITIVES_IN_FRAME),
 				"engine_static_mb": float(OS.get_static_memory_usage()) / 1048576.0,
+				# CPU time submitting the frame, and GPU time where the browser
+				# exposes a timer query (most do not on the web: 0 then).
+				"render_cpu_ms": RenderingServer.viewport_get_measured_render_time_cpu(showroom.get_viewport().get_viewport_rid())
+					+ RenderingServer.get_frame_setup_time_cpu(),
+				"render_gpu_ms": RenderingServer.viewport_get_measured_render_time_gpu(showroom.get_viewport().get_viewport_rid()),
 				"items": placer.items.size(),
 				"settling": placer.any_settling(),
 			})

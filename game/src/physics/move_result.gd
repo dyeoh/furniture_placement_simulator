@@ -48,6 +48,11 @@ var plane_count := 0
 var touched := []
 var touched_count := 0
 
+## Fill the plane, wall and touched-body fields. They cost an Array of
+## Dictionaries from the engine every move; a caller that only needs
+## position, velocity and grounded (the showroom's Shopper) turns this off.
+var detail := true
+
 
 func reset() -> void:
 	grounded = false

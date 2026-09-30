@@ -36,7 +36,6 @@ var lift_y := 0.0
 var light := {"on": true, "energy": 0.6, "warmth": 0.7}
 
 const LIGHT_MAX_ENERGY := 3.0
-const LIGHT_RANGE := 5.0
 
 ## Lamp shadows are cube maps (six scene passes each): off on low spec
 ## (Quality), and even then only for the lamps the showroom picks.
@@ -125,7 +124,7 @@ func build_visual(parent: Node3D, color: Color) -> void:
 		node.add_child(FurnitureShapes.build(item.shape_kind, item.size, _wood_mat))
 	if item.is_light():
 		_omni = OmniLight3D.new()
-		_omni.omni_range = LIGHT_RANGE
+		_omni.omni_range = float(Lighting.perf("lamp_range"))
 		_omni.omni_attenuation = 1.2 * Lighting.gain("falloff")
 		_omni.shadow_enabled = false
 		_omni.shadow_blur = 2.0

@@ -360,7 +360,8 @@ export class Showroom {
     for (const p of this.placer.items) {
       if (!p.item.isLight()) continue;
       const rank = lit.indexOf(p);
-      p.setLightShadow(rank >= 0 && rank < LAMP_SHADOWS);
+      // A phone shadows one lamp, as the Godot build does (Lighting.PERF "lamps").
+      p.setLightShadow(rank >= 0 && rank < (this.touch ? 1 : LAMP_SHADOWS));
     }
   }
 
@@ -694,8 +695,14 @@ export class Showroom {
     this.updateCamera();
     this.updateHud();
     this.touch?.setCarrying(this.shopper.carrying !== null);
+    const r0 = performance.now();
     this.renderer.render(this.scene, this.camera);
+    this.renderMs += performance.now() - r0;
+    this.renderFrames++;
   }
+  /** CPU time spent in renderer.render() since the bench last read it. */
+  renderMs = 0;
+  renderFrames = 0;
 
   /** Planner orbit, set directly (the bench drives the same view on both stacks). */
   setOrbit(yaw: number, pitch: number, dist: number): void {
