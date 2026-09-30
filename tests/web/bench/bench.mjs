@@ -5,7 +5,7 @@
 //
 //   node tests/web/bench/bench.mjs [--runs 3] [--sample 5000] [--quality high]
 //        [--targets godot,three,three-rapier] [--scenarios empty,showroom]
-//        [--mount name=<dir>]... [--headless] [--channel chrome|chromium]
+//        [--mount name=<dir>]... [--headless] [--channel chrome|chromium] [--measure]
 //
 // Layout served, as on Pages: web/ at /, three/dist at /three/, the bench page
 // at /bench/. --mount adds a directory at /<name>/ for A/B runs, e.g.
@@ -93,6 +93,7 @@ export function pageQuery() {
   q.set('quality', opt('quality', 'high'));
   q.set('targets', opt('targets', 'godot,three'));
   if (opt('scenarios')) q.set('scenarios', opt('scenarios'));
+  if (args.includes('--measure')) q.set('measure', '1');
   return q.toString();
 }
 

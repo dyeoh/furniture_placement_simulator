@@ -6,6 +6,9 @@
   var RUNS = Number(q.get('runs') || 3);
   var SAMPLE_MS = Number(q.get('sample') || 5000);
   var QUALITY = q.get('quality') || 'high';
+  // ?measure=1 asks the builds for render timing (Godot's viewport timestamp
+  // capture, which crashed WebKit on Linux CI, so it is opt-in).
+  var MEASURE = q.get('measure') === '1';
   var READY_TIMEOUT_MS = 180000;
   var DEFAULT_URLS = { godot: '../', three: '../three/?physics=box3d', 'three-rapier': '../three/?physics=rapier' };
   // ?targets=godot,three or label=url pairs, e.g. godot-old=/old/
@@ -104,7 +107,7 @@
 
   async function stats(sim) {
     sim.inbox.length = 0;
-    send(sim, { type: 'bench', op: 'stats' });
+    send(sim, { type: 'bench', op: 'stats', measure: MEASURE });
     for (var i = 0; i < 20; i++) {
       var s = sim.inbox.filter(function (m) { return m.type === 'bench_stats'; })[0];
       if (s) return s;
