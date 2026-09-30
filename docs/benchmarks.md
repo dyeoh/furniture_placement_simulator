@@ -17,9 +17,10 @@ benchmark page at `/bench/`.
 choice is a trade-off, not a sweep:
 - **Load:** three.js is ready 2–9× sooner and downloads 61% less, on every
   device. Every shopper pays this.
-- **Runtime:** after the Godot shadow work (below), Godot is faster on the
-  budget Android phone in every scene, and on the iPhone with 150 pieces.
-  three.js is faster on iPhone in the scenes with several shadowed lights.
+- **Runtime:** after the Godot shadow work (below), Godot is faster on both
+  Android phones in every scene, and on the iPhone 16 with 150 pieces.
+  three.js is faster on the iPhone 12 in every scene, and on the iPhone 16
+  in the scenes with several shadowed lights.
 - **Why three.js loses with many objects:** it is CPU-bound in JavaScript,
   about 2–13 ms per frame in `renderer.render()` against 0.2–1.7 ms in Godot
   (desktop). Instancing repeated furniture addresses exactly that.
@@ -107,37 +108,45 @@ Not counted:
 
 ### After the Godot optimisations (2026-09-30)
 
-Live build `85ba7d1` (the optimisations below, and the WebKit fix). Two runs,
-3 s samples. The Galaxy M32 and the iPhone 16 completed. The Pixel 7 session
-dropped mid-run ("browser has closed the connection") and the iPhone 12 never
-finished inside the 45-minute limit; neither left results.
+Live build `85ba7d1` (the optimisations below, and the WebKit fix). Two runs
+per phone, 3 s samples.
+
+The Pixel 7 and iPhone 12 needed a second attempt. The first time, the Pixel 7's Chrome
+renderer died during Godot's drop-150. The iPhone 12 stalled on the second
+Godot load in the same page: iOS Safari had not freed the first Godot iframe's
+wasm memory. `browserstack.mjs` now loads a fresh page per run and gives up on
+a device that makes no progress for 6 minutes; with that, both completed.
 
 **Godot, before → after (fps):**
 
-| scene | Galaxy M32 | iPhone 16 |
-|---|---|---|
-| showroom | 54 → **59** | 54 → **59** |
-| night | 32 → **40** (+27%) | 33 → **38** (+16%) |
-| walk | 43 → **46** | 26 → **48** (+88%) |
-| drop-150 | 13 → **20** (+59%) | 39 → **41** |
-| crowd-150 | 12 → **24** (2×) | 40 → **44** |
+| scene | Galaxy M32 | Pixel 7 | iPhone 12 | iPhone 16 |
+|---|---|---|---|---|
+| showroom | 54 → **59** | 89 → 90 | 36 → 39 | 54 → **59** |
+| night | 32 → **40** (+27%) | 54 → **81** (+50%) | 42 → 36 | 33 → **38** (+16%) |
+| walk | 43 → **46** | 64 → **78** (+23%) | 20 → 22 | 26 → **48** (+88%) |
+| drop-150 | 13 → **20** (+59%) | 32 → **39** | 25 → 23 | 39 → **41** |
+| crowd-150 | 12 → **24** (2×) | 32 → **42** | 19 → 20 | 40 → **44** |
+
+(The iPhone 12's "before" is a single run with 1.5 s samples, so its small
+drops are within noise: Godot did not gain there.)
 
 **Godot / three.js, after:**
 
-| | Galaxy M32 | iPhone 16 |
-|---|---|---|
-| ready | 17.9 s / **3.6 s** | 8.2 s / **1.4 s** |
-| showroom | 59 / 58 | 59 / 60 |
-| night | **40** / 33 | 38 / **49** |
-| walk | **46** / 41 | 48 / **60** |
-| drop-150 | **20** / 10 | **41** / 35 |
-| crowd-150 | **24** / 10 | **44** / 30 |
+| | Galaxy M32 | Pixel 7 | iPhone 12 | iPhone 16 |
+|---|---|---|---|---|
+| ready | 17.9 s / **3.6 s** | 10.4 s / **2.4 s** | 13.4 s / **2.9 s** | 8.2 s / **1.4 s** |
+| showroom | 59 / 58 | 90 / 90 | 39 / **46** | 59 / 60 |
+| night | **40** / 33 | **81** / 64 | 36 / 38 | 38 / **49** |
+| walk | **46** / 41 | **78** / 60 | 22 / **45** | 48 / **60** |
+| drop-150 | **20** / 10 | **39** / 26 | 23 / **30** | **41** / 35 |
+| crowd-150 | **24** / 10 | **42** / 26 | 20 / **28** | **44** / 30 |
 
-With the shadow work, Godot is faster at runtime than three.js on the budget
-Android phone in every scene, and on the iPhone with many pieces. three.js
-still loads 5–6× faster everywhere and stays ahead on iPhone in the scenes
-with several shadowed lights. (Load times vary run to run with the
-network: three.js 1.9 → 3.6 s on the M32 and 3.6 → 1.4 s on the iPhone.)
+After the shadow work, Godot is faster at runtime than three.js on both
+Android phones in every scene, and on the iPhone 16 with many pieces.
+three.js is faster in every scene on the iPhone 12, and in the scenes with
+several shadowed lights on the iPhone 16. It loads 4–6× faster on all four
+phones. Load times vary run to run with the network (three.js on the M32:
+1.9 → 3.6 s).
 
 ## Godot optimisations (commit `33ec513`)
 

@@ -44,10 +44,10 @@ benchmarked on real devices through the self-running bench page
 | 150 pieces at rest (fps) | **12** / 11 | **32** / 22 | 19 / **21** | **40** / 32 |
 
 Godot downloads 17.5 MB, three.js 6.8 MB. These figures predate the Godot
-shadow optimisations (`33ec513`). After them, on the Galaxy M32 and the
-iPhone 16, Godot gained 16–88% at night, in the walk and with 150 pieces, and
-now beats three.js at runtime on the budget Android phone. three.js still
-loads 5–6× faster.
+shadow optimisations (`33ec513`). After them, Godot is faster at runtime than
+three.js on both Android phones (Pixel 7: night 81 vs 64 fps, walk 78 vs 60).
+three.js stays ahead on iPhone: every scene on the iPhone 12, the lighting
+scenes on the iPhone 16. It still loads 4–6× faster everywhere.
 
 **Recommendation: three.js + Box3D, instancing next.** Load time is paid by
 every shopper; three.js's weakness, many pieces, is JavaScript draw-call
