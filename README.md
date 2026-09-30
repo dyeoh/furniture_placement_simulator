@@ -28,6 +28,34 @@ replaces it with the live collection at runtime.
 | **Looks** | The store publishes no 3D models, so each product is a generic CC0 model (Poly Haven) stretched to the product's real dimensions and tinted to its timber; beds, racks and lamps are generated. Room surfaces are PBR (albedo/normal/roughness). Soft shading on the wall behind anything standing against it, the models' own baked occlusion (from their ARM maps), and ambient-only occlusion maps darkening the walls and floor into their seams, stand in for SSAO (the web renderer has none); AgX tonemapping rolls off highlights instead of clipping them; walls carry skirting, a crown moulding under a ceiling, and a dark section-cut cap on top. |
 | **Store** | Runs in an `<iframe>` on the Shopify page. The page sends the collection as the catalogue with one variant id per timber finish; the sim sends the layout on every change and "add to cart" with the variant matching each piece's finish. |
 
+## Web stack benchmark
+
+The simulator also exists as a three.js port (`three/`, live at
+[`/three/`](https://dyeoh.github.io/furniture_placement_simulator/three/))
+on the same Box3D physics, models and postMessage contract. Both builds were
+benchmarked on real devices through the self-running bench page
+([`/bench/`](https://dyeoh.github.io/furniture_placement_simulator/bench/)):
+
+| BrowserStack, 2026-09-29 | Galaxy M32 | Pixel 7 | iPhone 12 | iPhone 16 |
+|---|---|---|---|---|
+| Ready (Godot / three.js) | 17.8 s / **1.9 s** | 9.8 s / **5.4 s** | 14.0 s / **6.4 s** | 11.0 s / **3.6 s** |
+| Night, 4 shadowed lights (fps) | **32** / 26 | **54** / 46 | 42 / **45** | 33 / **55** |
+| First-person walk (fps) | **43** / 40 | 64 / **71** | 20 / **44** | 26 / **55** |
+| 150 pieces at rest (fps) | **12** / 11 | **32** / 22 | 19 / **21** | **40** / 32 |
+
+Godot downloads 17.5 MB, three.js 6.8 MB. These figures predate the Godot
+shadow optimisations (`33ec513`). After them, on the Galaxy M32 and the
+iPhone 16, Godot gained 16–88% at night, in the walk and with 150 pieces, and
+now beats three.js at runtime on the budget Android phone. three.js still
+loads 5–6× faster.
+
+**Recommendation: three.js + Box3D, instancing next.** Load time is paid by
+every shopper; three.js's weakness, many pieces, is JavaScript draw-call
+overhead that instancing addresses.
+
+Method, all results, the Godot optimisations, the Box3D and SIMD numbers and
+the look calibration: **[docs/benchmarks.md](docs/benchmarks.md)**.
+
 ## Setup (local)
 
 Requires Godot 4.7.1, `scons` and `cmake` (`brew install scons cmake`).
