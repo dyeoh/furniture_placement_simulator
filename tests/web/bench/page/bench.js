@@ -4,6 +4,9 @@
   'use strict';
   var q = new URLSearchParams(location.search);
   var RUNS = Number(q.get('runs') || 3);
+  // Rotates which build goes first; a driver that reloads the page per run
+  // (browserstack.mjs) passes the run number so the rotation carries on.
+  var OFFSET = Number(q.get('offset') || 0);
   var SAMPLE_MS = Number(q.get('sample') || 5000);
   var QUALITY = q.get('quality') || 'high';
   // ?measure=1 asks the builds for render timing (Godot's viewport timestamp
@@ -225,7 +228,7 @@
     for (var run = 0; run < RUNS; run++) {
       // Rotate the order each run so drift does not always land on the same build.
       for (var k = 0; k < TARGETS.length; k++) {
-        var t = TARGETS[(k + run) % TARGETS.length];
+        var t = TARGETS[(k + run + OFFSET) % TARGETS.length];
         try { state.runs.push(await runTarget(t, run)); }
         catch (e) { state.runs.push({ target: t.name, run: run, error: String(e && e.message || e) }); }
       }

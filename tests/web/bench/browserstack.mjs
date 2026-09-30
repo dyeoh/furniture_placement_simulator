@@ -69,6 +69,61 @@ async function plan({ user, key }) {
   return res.json();
 }
 
+/** No progress change for this long: the page is stuck (a hung tab keeps no clock). */
+const STALL_MS = 6 * 60_000;
+
+function median(values) {
+  const v = values.filter((x) => typeof x === 'number').sort((a, b) => a - b);
+  return v.length ? v[Math.floor(v.length / 2)] : null;
+}
+
+/** The bench page's own combine, over run records gathered from several page loads. */
+function combine(runs) {
+  const byTarget = {};
+  for (const r of runs) (byTarget[r.target] ??= []).push(r);
+  return Object.entries(byTarget).map(([target, rs]) => {
+    const scenarios = {};
+    for (const name of Object.keys(rs[0].scenarios)) {
+      scenarios[name] = Object.fromEntries(Object.keys(rs[0].scenarios[name])
+        .map((k) => [k, median(rs.map((r) => r.scenarios[name]?.[k]))]));
+    }
+    return { target, runs: rs.length, ready: rs[0].ready, refreshMs: median(rs.map((r) => r.refreshMs)),
+      coldReadyMs: rs[0].readyMs, coldBytes: rs[0].bytes,
+      warmReadyMs: median(rs.slice(1).map((r) => r.readyMs)), scenarios };
+  });
+}
+
+/**
+ * One page load = one run of both builds. A fresh page per run, because
+ * iOS Safari kept the first Godot iframe's wasm memory around and the second
+ * Godot load in the same page never finished (iPhone 12, 2026-09-30).
+ */
+async function onePageRun(driver, run, log) {
+  const url = `${BASE}/bench/?${new URLSearchParams({ runs: '1', offset: String(run), sample: SAMPLE,
+    quality: 'high', targets: 'godot,three' })}`;
+  await driver.get(url);
+  const t0 = Date.now();
+  let last = '';
+  let changed = Date.now();
+  let missing = 0;
+  for (;;) {
+    const s = await driver.executeScript('return window.__bench ? { done: window.__bench.done, progress: window.__bench.progress } : null;');
+    if (!s) {
+      // The page itself is gone: the tab crashed or reloaded under us.
+      if (++missing >= 3) throw new Error(`page lost after "${last}" (tab crashed or reloaded)`);
+    } else {
+      missing = 0;
+      if (s.progress !== last) { log(s.progress); last = s.progress; changed = Date.now(); }
+      if (s.done) break;
+    }
+    if (Date.now() - changed > STALL_MS) throw new Error(`stalled at "${last}"`);
+    if (Date.now() - t0 > TIMEOUT_MS) throw new Error('timed out');
+    await new Promise((r) => setTimeout(r, 10_000));
+  }
+  // As a JSON string: Safari's WebDriver refuses to transfer the object itself.
+  return JSON.parse(await driver.executeScript('return JSON.stringify(window.__bench);'));
+}
+
 async function runDevice(id, cred, build, outDir) {
   const d = DEVICES[id];
   const caps = structuredClone(d.caps);
@@ -76,40 +131,42 @@ async function runDevice(id, cred, build, outDir) {
     userName: cred.user, accessKey: cred.key, projectName: 'Room Planner bench', buildName: build,
     sessionName: d.label, idleTimeout: 300, debug: 'false', networkLogs: 'false', consoleLogs: 'errors',
   });
-  const url = `${BASE}/bench/?${new URLSearchParams({ runs: RUNS, sample: SAMPLE, quality: 'high', targets: 'godot,three' })}`;
   const log = (m) => console.log(`[${id}] ${m}`);
   let driver;
+  const runs = [];
+  const errors = [];
+  let env = null;
   try {
     driver = await new Builder().usingServer('https://hub.browserstack.com/wd/hub').withCapabilities(caps).build();
-    log(`session ${(await driver.getSession()).getId()} · ${url}`);
-    await driver.get(url);
-    const t0 = Date.now();
-    let last = '';
-    for (;;) {
-      const s = await driver.executeScript('return window.__bench ? { done: window.__bench.done, progress: window.__bench.progress } : null;');
-      if (s && s.progress !== last) { log(s.progress); last = s.progress; }
-      if (s?.done) break;
-      if (Date.now() - t0 > TIMEOUT_MS) throw new Error('timed out');
-      await new Promise((r) => setTimeout(r, 10_000));
+    log(`session ${(await driver.getSession()).getId()}`);
+    for (let run = 0; run < Number(RUNS); run++) {
+      try {
+        const bench = await onePageRun(driver, run, log);
+        env ??= bench.env;
+        runs.push(...bench.runs.filter((r) => !r.error).map((r) => ({ ...r, run })));
+        errors.push(...bench.runs.filter((r) => r.error).map((r) => ({ ...r, run })));
+      } catch (e) {
+        // Keep what earlier runs gave; a crashed tab ends this device.
+        errors.push({ run, error: e.message.split('\n')[0] });
+        log(`run ${run + 1} failed: ${e.message.split('\n')[0]}`);
+        break;
+      }
     }
-    // As a JSON string: Safari's WebDriver refuses to transfer the object itself.
-    const bench = JSON.parse(await driver.executeScript('return JSON.stringify(window.__bench);'));
-    fs.writeFileSync(path.join(outDir, `${id}.json`), JSON.stringify({ device: d.label, ...bench }, null, 2));
-    const ok = !bench.error && bench.results?.length === 2;
-    await driver.executeScript(`browserstack_executor: ${JSON.stringify({ action: 'setSessionStatus',
-      arguments: { status: ok ? 'passed' : 'failed', reason: ok ? 'bench complete' : String(bench.error || 'incomplete').slice(0, 200) } })}`);
-    log(ok ? 'done' : `failed: ${bench.error || 'incomplete'}`);
-    return { id, label: d.label, bench };
   } catch (e) {
+    errors.push({ error: e.message.split('\n')[0] });
     log(`error: ${e.message.split('\n')[0]}`);
-    try {
-      await driver?.executeScript(`browserstack_executor: ${JSON.stringify({ action: 'setSessionStatus',
-        arguments: { status: 'failed', reason: e.message.slice(0, 200) } })}`);
-    } catch { /* session already gone */ }
-    return { id, label: d.label, error: e.message };
-  } finally {
-    await driver?.quit().catch(() => {});
   }
+  const results = runs.length ? combine(runs) : [];
+  const ok = results.length === 2 && errors.length === 0;
+  const bench = { env, results, runs, errors, done: true };
+  if (results.length) fs.writeFileSync(path.join(outDir, `${id}.json`), JSON.stringify({ device: d.label, ...bench }, null, 2));
+  try {
+    await driver?.executeScript(`browserstack_executor: ${JSON.stringify({ action: 'setSessionStatus',
+      arguments: { status: ok ? 'passed' : 'failed', reason: ok ? 'bench complete' : String(errors[0]?.error || 'incomplete').slice(0, 200) } })}`);
+  } catch { /* session already gone */ }
+  await driver?.quit().catch(() => {});
+  log(ok ? 'done' : `partial: ${results.map((r) => `${r.target} x${r.runs}`).join(', ') || 'no results'}`);
+  return { id, label: d.label, bench, error: ok ? null : errors[0]?.error };
 }
 
 async function main() {
